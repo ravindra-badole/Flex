@@ -1,0 +1,65 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Create Gig - SkillBridge</title>
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+
+<div class="dashboard">
+  <div class="sidebar">
+    <h2>SkillBridge</h2>
+    <ul>
+      <li><a href="index.html">Home</a></li>
+      <li><a href="dashboard.html">Dashboard</a></li>
+      <li><a href="profile.html">My Profile</a></li>
+      <li><a href="mygigs.html">My Gigs</a></li>
+      <li><a href="post-job.html">Post Job</a></li>
+      <li><a href="browse-jobs.html">Browse Jobs</a></li>
+      <li><a href="orders.html">Orders</a></li>
+      <li><a href="messages.html">Messages</a></li>
+      <li><a href="notifications.html">Notifications</a></li>
+      <li><a href="settings.html">Settings</a></li>
+      <li><a href="help.html">Help</a></li>
+      <li class="logout-item"><a href="index.html">Logout</a></li>
+    </ul>
+  </div>
+
+  <div class="main" style="padding: 40px;">
+    <div class="topbar">
+      <a href="dashboard.html" class="back-arrow">&larr;</a>
+      <h3>Create Gig</h3>
+      <img class="user-dp" alt="User DP">
+    </div>
+
+    <div class="profile-card">
+      <h2>Post a New Gig</h2>
+      <p>Fill in the details below to create your new service listing.</p>
+
+      <form action="mygigs.html" style="margin-top: 20px; display: grid; gap: 12px;">
+        <input type="text" name="title" placeholder="Gig Title" required style="padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #111827; color: white;">
+        <textarea name="description" placeholder="Gig Description" rows="5" required style="padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #111827; color: white;"></textarea>
+        <input type="number" name="price" placeholder="Price (INR)" required style="padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #111827; color: white;">
+        <input type="number" name="delivery_days" placeholder="Delivery Time (Days)" required style="padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #111827; color: white;">
+        <div class="actions" style="margin-top: 10px;">
+          <button type="submit">Publish Gig</button>
+          <button type="button" onclick="window.location.href='mygigs.html'">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+  <script src="user-dp.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
+
+
+
+
+
+
+

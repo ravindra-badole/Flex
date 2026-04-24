@@ -1,0 +1,61 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Post Job - SkillBridge</title>
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+
+<div class="dashboard">
+  <div class="sidebar">
+    <h2>SkillBridge</h2>
+    <ul>
+      <li><a href="index.html">Home</a></li>
+      <li><a href="dashboard.html">Dashboard</a></li>
+      <li><a href="profile.html">My Profile</a></li>
+      <li><a href="mygigs.html">My Gigs</a></li>
+      <li><a href="post-job.html">Post Job</a></li>
+      <li><a href="browse-jobs.html">Browse Jobs</a></li>
+      <li><a href="orders.html">Orders</a></li>
+      <li><a href="messages.html">Messages</a></li>
+      <li><a href="notifications.html">Notifications</a></li>
+      <li><a href="settings.html">Settings</a></li>
+      <li><a href="help.html">Help</a></li>
+      <li class="logout-item"><a href="index.html">Logout</a></li>
+    </ul>
+  </div>
+
+  <div class="main" style="padding: 40px;">
+    <div class="topbar">
+      <a href="dashboard.html" class="back-arrow">&larr;</a>
+      <h3>Post a Job</h3>
+      <img class="user-dp" alt="User DP">
+    </div>
+
+    <div class="profile-card">
+      <h2>Hire the Right Freelancer</h2>
+      <p>Create a clear project brief so freelancers can send better proposals.</p>
+
+      <form id="postJobForm" style="margin-top: 20px; display: grid; gap: 12px;">
+        <input type="text" name="title" placeholder="Job Title" required>
+        <textarea name="description" placeholder="Project Description" rows="5" required></textarea>
+        <input type="number" name="budget" placeholder="Budget (INR)" required>
+        <input type="text" name="category" placeholder="Category (e.g. Web Design, AI, Content)" required>
+        <input type="number" name="deadline_days" placeholder="Deadline (Days)" required>
+
+        <div class="actions" style="margin-top: 6px;">
+          <button type="submit">Post Job</button>
+          <button type="button" class="secondary-btn" onclick="window.location.href='dashboard.html'">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+  <script src="user-dp.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
+

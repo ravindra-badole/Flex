@@ -1,0 +1,86 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Profile - SkillBridge</title>
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+
+<div class="dashboard">
+  <div class="sidebar">
+    <h2>SkillBridge</h2>
+    <ul>
+      <li><a href="index.html">Home</a></li>
+      <li><a href="dashboard.html">Dashboard</a></li>
+      <li><a href="profile.html">My Profile</a></li>
+      <li><a href="mygigs.html">My Gigs</a></li>
+      <li><a href="post-job.html">Post Job</a></li>
+      <li><a href="browse-jobs.html">Browse Jobs</a></li>
+      <li><a href="orders.html">Orders</a></li>
+      <li><a href="messages.html">Messages</a></li>
+      <li><a href="notifications.html">Notifications</a></li>
+      <li><a href="settings.html">Settings</a></li>
+      <li><a href="help.html">Help</a></li>
+      <li class="logout-item"><a href="index.html">Logout</a></li>
+    </ul>
+  </div>
+
+  <div class="main" style="padding: 40px;">
+    <div class="topbar">
+      <a href="dashboard.html" class="back-arrow">&larr;</a>
+      <h3>My Profile</h3>
+      <img class="user-dp" alt="User DP">
+    </div>
+
+    <div class="profile-card">
+      <div class="dp-section">
+        <img class="user-dp profile-dp" alt="User DP">
+        <div class="dp-controls">
+          <label for="dpUpload" class="upload-btn">Upload DP</label>
+          <input type="file" id="dpUpload" accept="image/*">
+          <button type="button" class="secondary-btn" onclick="clearDp()">Remove DP</button>
+        </div>
+      </div>
+      <h2>Jane Doe</h2>
+      <p>Freelancer | Web Developer | UI/UX Designer</p>
+
+      <div class="profile-details">
+        <div>
+          <strong>Email:</strong>
+          <p>jane.doe@example.com</p>
+        </div>
+        <div>
+          <strong>Location:</strong>
+          <p>Mumbai, India</p>
+        </div>
+        <div>
+          <strong>Skills:</strong>
+          <p>React, Figma, JavaScript, HTML, CSS</p>
+        </div>
+        <div>
+          <strong>About Me:</strong>
+          <p>Passionate about building polished web experiences and connecting businesses with the right talent.</p>
+        </div>
+      </div>
+
+      <div class="actions" style="margin-top: 30px;">
+        <button type="button" onclick="window.location.href='settings.html'">Edit Profile</button>
+        <button type="button" onclick="window.location.href='mygigs.html'">View My Gigs</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+  <script src="user-dp.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
+
+
+
+
+
+
+

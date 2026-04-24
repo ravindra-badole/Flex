@@ -1,0 +1,79 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - SkillBridge</title>
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+
+<body>
+
+<div class="dashboard">
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <h2>SkillBridge</h2>
+    <ul>
+      <li><a href="index.html">Home</a></li>
+      <li><a href="dashboard.html">Dashboard</a></li>
+      <li><a href="profile.html">My Profile</a></li>
+      <li><a href="mygigs.html">My Gigs</a></li>
+      <li><a href="post-job.html">Post Job</a></li>
+      <li><a href="browse-jobs.html">Browse Jobs</a></li>
+      <li><a href="orders.html">Orders</a></li>
+      <li><a href="messages.html">Messages</a></li>
+      <li><a href="notifications.html">Notifications</a></li>
+      <li><a href="settings.html">Settings</a></li>
+      <li><a href="help.html">Help</a></li>
+      <li class="logout-item"><a href="index.html">Logout</a></li>
+    </ul>
+  </div>
+
+  <!-- Main Content -->
+  <div class="main">
+
+    <!-- Top Bar -->
+    <div class="topbar">
+      <a href="index.html" class="back-arrow">&larr;</a>
+      <h3>Welcome, User!</h3>
+      <img class="user-dp" alt="User DP">
+    </div>
+
+    <!-- Stats -->
+    <div class="stats">
+      <div class="card">
+        <h3>12</h3>
+        <p>Active Orders</p>
+      </div>
+      <div class="card">
+        <h3>5</h3>
+        <p>Completed Jobs</p>
+      </div>
+      <div class="card">
+        <h3>Rs 15,000</h3>
+        <p>Earnings</p>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="actions">
+      <button type="button" onclick="window.location.href='create-gig.html'">Create Gig</button>
+      <button type="button" onclick="window.location.href='post-job.html'">Post Job</button>
+      <button type="button" onclick="window.location.href='browse-jobs.html'">Browse Jobs</button>
+    </div>
+
+  </div>
+
+</div>
+
+  <script src="user-dp.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
+
+
+
+
+
+

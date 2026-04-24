@@ -1,0 +1,94 @@
+body {
+  margin: 0;
+  padding: 0;
+  font-family: Arial, sans-serif;
+  background: #0f172a;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  color: white;
+}
+.back-home {
+  display: block;
+  margin-bottom: 15px;
+  color: #38bdf8;
+  text-decoration: none;
+  font-size: 14px;
+}
+/* Container */
+.container {
+  width: 100%;
+  max-width: 400px;
+}
+
+/* Login Box */
+.login-box {
+  background: #1e293b;
+  padding: 30px;
+  border-radius: 10px;
+  text-align: center;
+}
+
+/* Heading */
+.login-box h2 {
+  margin-bottom: 20px;
+}
+
+/* Inputs */
+.login-box input {
+  width: 100%;
+  padding: 10px;
+  margin: 10px 0;
+  border: none;
+  border-radius: 5px;
+}
+
+/* Buttons */
+button {
+  width: 100%;
+  padding: 10px;
+  margin-top: 10px;
+  border: none;
+  cursor: pointer;
+  border-radius: 5px;
+}
+
+/* Social Buttons */
+.google-btn {
+  background: #db4437;
+  color: white;
+}
+
+.facebook-btn {
+  background: #1877f2;
+  color: white;
+}
+
+/* Divider */
+.divider {
+  margin: 15px 0;
+}
+
+/* Login Button */
+.login-btn {
+  background: #38bdf8;
+  color: black;
+}
+
+/* Options */
+.options {
+  text-align: left;
+  font-size: 14px;
+}
+
+/* Signup Link */
+.signup-link {
+  margin-top: 15px;
+  font-size: 14px;
+}
+
+.signup-link a {
+  color: #38bdf8;
+  text-decoration: none;
+}

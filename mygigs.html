@@ -1,0 +1,77 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Gigs - SkillBridge</title>
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+
+<div class="dashboard">
+  <div class="sidebar">
+    <h2>SkillBridge</h2>
+    <ul>
+      <li><a href="index.html">Home</a></li>
+      <li><a href="dashboard.html">Dashboard</a></li>
+      <li><a href="profile.html">My Profile</a></li>
+      <li><a href="mygigs.html">My Gigs</a></li>
+      <li><a href="post-job.html">Post Job</a></li>
+      <li><a href="browse-jobs.html">Browse Jobs</a></li>
+      <li><a href="orders.html">Orders</a></li>
+      <li><a href="messages.html">Messages</a></li>
+      <li><a href="notifications.html">Notifications</a></li>
+      <li><a href="settings.html">Settings</a></li>
+      <li><a href="help.html">Help</a></li>
+      <li class="logout-item"><a href="index.html">Logout</a></li>
+    </ul>
+  </div>
+
+  <div class="main" style="padding: 40px;">
+    <div class="topbar">
+      <a href="dashboard.html" class="back-arrow">&larr;</a>
+      <h3>My Gigs</h3>
+      <img class="user-dp" alt="User DP">
+    </div>
+
+    <div class="profile-card">
+      <h2>Your Active Gigs</h2>
+      <p>Manage and review your current project listings.</p>
+
+      <div class="gigs-grid" style="margin-top: 30px;">
+        <div class="gig-card">
+          <h3>Website Design</h3>
+          <p>Clean and responsive landing pages for startups and personal brands.</p>
+          <p><strong>Price:</strong> Rs 8,000</p>
+        </div>
+        <div class="gig-card">
+          <h3>Logo & Branding</h3>
+          <p>Brand identity packages with logo, color palette, and social kits.</p>
+          <p><strong>Price:</strong> Rs 5,500</p>
+        </div>
+        <div class="gig-card">
+          <h3>UI/UX Prototypes</h3>
+          <p>Interactive Figma prototypes for web or mobile applications.</p>
+          <p><strong>Price:</strong> Rs 12,000</p>
+        </div>
+      </div>
+
+      <div class="actions" style="margin-top: 30px;">
+        <button type="button" onclick="window.location.href='create-gig.html'">Create New Gig</button>
+        <button type="button" onclick="window.location.href='orders.html'">View Orders</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+  <script src="user-dp.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
+
+
+
+
+
+
+
