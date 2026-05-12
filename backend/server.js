@@ -157,6 +157,8 @@ function mapSupportTicket(row) {
 function mapMessage(row) {
   return {
     id: row.id,
+    applicationId: row.application_id || row.applicationId || "",
+    jobId: row.job_id || row.jobId || "",
     senderEmail: row.sender_email || row.senderEmail,
     recipientEmail: row.recipient_email || row.recipientEmail,
     subject: row.subject || "Project update",
@@ -502,17 +504,31 @@ function createJsonStore() {
         .map(mapMessage);
     },
 
-    async createMessage({ senderEmail, recipientEmail, subject, body }) {
+    async createMessage({ senderEmail, recipientEmail, applicationId, subject, body }) {
       db = readJsonDb();
       const sender = db.users.find((item) => item.email === senderEmail);
       const recipient = db.users.find((item) => item.email === recipientEmail);
 
       if (!sender || !recipient) {
-        return null;
+        return { type: "missing_user" };
+      }
+
+      const acceptedApp = db.applications.find((item) => {
+        const sameApplication = applicationId ? item.id === applicationId : true;
+        const accepted = item.status === "Accepted";
+        const participants = item.clientEmail === senderEmail && item.freelancerEmail === recipientEmail
+          || item.clientEmail === recipientEmail && item.freelancerEmail === senderEmail;
+        return sameApplication && accepted && participants;
+      });
+
+      if (!acceptedApp) {
+        return { type: "locked" };
       }
 
       const message = {
         id: makeId("m"),
+        applicationId: acceptedApp.id,
+        jobId: acceptedApp.jobId,
         senderEmail,
         recipientEmail,
         subject,
@@ -522,7 +538,7 @@ function createJsonStore() {
 
       db.messages.push(message);
       save();
-      return mapMessage(message);
+      return { type: "ok", message: mapMessage(message) };
     }
   };
 }
@@ -623,6 +639,8 @@ async function createMySqlStore() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS messages (
       id VARCHAR(80) PRIMARY KEY,
+      application_id VARCHAR(80) NULL,
+      job_id VARCHAR(80) NULL,
       sender_email VARCHAR(200) NOT NULL,
       recipient_email VARCHAR(200) NOT NULL,
       subject VARCHAR(255) NOT NULL,
@@ -632,6 +650,9 @@ async function createMySqlStore() {
       INDEX idx_messages_recipient (recipient_email)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
   `);
+
+  await pool.query("ALTER TABLE messages ADD COLUMN application_id VARCHAR(80) NULL").catch(() => {});
+  await pool.query("ALTER TABLE messages ADD COLUMN job_id VARCHAR(80) NULL").catch(() => {});
 
   return {
     kind: "mysql",
@@ -919,23 +940,40 @@ async function createMySqlStore() {
       return rows.map(mapMessage);
     },
 
-    async createMessage({ senderEmail, recipientEmail, subject, body }) {
+    async createMessage({ senderEmail, recipientEmail, applicationId, subject, body }) {
       const [senderRows] = await pool.execute("SELECT id FROM users WHERE email = ? LIMIT 1", [senderEmail]);
       const [recipientRows] = await pool.execute("SELECT id FROM users WHERE email = ? LIMIT 1", [recipientEmail]);
 
       if (!senderRows.length || !recipientRows.length) {
-        return null;
+        return { type: "missing_user" };
       }
 
+      let acceptedSql = `
+        SELECT * FROM applications
+        WHERE status = 'Accepted'
+          AND ((client_email = ? AND freelancer_email = ?) OR (client_email = ? AND freelancer_email = ?))`;
+      const acceptedParams = [senderEmail, recipientEmail, recipientEmail, senderEmail];
+      if (applicationId) {
+        acceptedSql += " AND id = ?";
+        acceptedParams.push(applicationId);
+      }
+      acceptedSql += " LIMIT 1";
+
+      const [acceptedRows] = await pool.execute(acceptedSql, acceptedParams);
+      if (!acceptedRows.length) {
+        return { type: "locked" };
+      }
+
+      const acceptedApp = acceptedRows[0];
       const messageId = makeId("m");
       await pool.execute(
-        `INSERT INTO messages (id, sender_email, recipient_email, subject, body)
-         VALUES (?, ?, ?, ?, ?)`,
-        [messageId, senderEmail, recipientEmail, subject, body]
+        `INSERT INTO messages (id, application_id, job_id, sender_email, recipient_email, subject, body)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [messageId, acceptedApp.id, acceptedApp.job_id, senderEmail, recipientEmail, subject, body]
       );
 
       const [rows] = await pool.execute("SELECT * FROM messages WHERE id = ? LIMIT 1", [messageId]);
-      return mapMessage(rows[0]);
+      return { type: "ok", message: mapMessage(rows[0]) };
     }
   };
 }
@@ -1211,6 +1249,7 @@ async function createMySqlStore() {
         const body = await parseBody(req);
         const senderEmail = normalizeEmail(body.senderEmail);
         const recipientEmail = normalizeEmail(body.recipientEmail);
+        const applicationId = String(body.applicationId || "").trim();
         const subject = String(body.subject || "Project update").trim();
         const messageBody = String(body.body || "").trim();
 
@@ -1221,15 +1260,19 @@ async function createMySqlStore() {
         const message = await store.createMessage({
           senderEmail,
           recipientEmail,
+          applicationId,
           subject,
           body: messageBody
         });
 
-        if (!message) {
+        if (message.type === "missing_user") {
           return json(res, 404, { ok: false, message: "sender or recipient not found" });
         }
+        if (message.type === "locked") {
+          return json(res, 403, { ok: false, message: "chat unlocks after the client accepts the application" });
+        }
 
-        return json(res, 201, { ok: true, message });
+        return json(res, 201, { ok: true, message: message.message });
       } catch (err) {
         return badRequest(res, err.message || "invalid request");
       }

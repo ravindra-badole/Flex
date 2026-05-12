@@ -173,6 +173,7 @@ body {
 .theme-light .message-item,
 .theme-light .gig-card,
 .theme-light .activity-card,
+.theme-light .chat-bubble,
 .theme-light .card,
 .theme-light .hero-copy,
 .theme-light .hero-side,
@@ -539,6 +540,39 @@ label {
   margin-top: 20px;
 }
 
+.chat-thread {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.chat-bubble {
+  max-width: min(680px, 92%);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  background: #0f172a;
+}
+
+.chat-bubble.mine {
+  justify-self: end;
+  background: rgba(56, 189, 248, 0.16);
+  border-color: rgba(56, 189, 248, 0.32);
+}
+
+.chat-bubble.theirs {
+  justify-self: start;
+}
+
+.chat-bubble p {
+  margin: 6px 0;
+}
+
+.chat-bubble span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
 .inline-form {
   display: grid;
   gap: 12px;
@@ -595,6 +629,10 @@ label {
   color: #0757b4;
   background: #e7f0ff;
   border-color: #b9d3ff;
+}
+
+.theme-light .chat-bubble.mine {
+  background: #e7f0ff;
 }
 
 .theme-light .back-arrow {

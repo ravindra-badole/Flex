@@ -60,3 +60,17 @@ CREATE TABLE IF NOT EXISTS support_tickets (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_support_email (email)
 );
+
+CREATE TABLE IF NOT EXISTS messages (
+  id VARCHAR(80) PRIMARY KEY,
+  application_id VARCHAR(80) NULL,
+  job_id VARCHAR(80) NULL,
+  sender_email VARCHAR(200) NOT NULL,
+  recipient_email VARCHAR(200) NOT NULL,
+  subject VARCHAR(255) NOT NULL,
+  body TEXT NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_messages_sender (sender_email),
+  INDEX idx_messages_recipient (recipient_email),
+  INDEX idx_messages_application (application_id)
+);

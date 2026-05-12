@@ -820,8 +820,10 @@
               "<p>Freelancer: " + escapeHtml(item.freelancerEmail) + "</p>" +
               "<p>Status: " + escapeHtml(item.status) + "</p>" +
               "<div class=\"actions\" style=\"margin-top: 8px;\">" +
-                "<button type=\"button\" data-app-action=\"Accepted\" data-app-id=\"" + item.id + "\">Accept</button>" +
-                "<button type=\"button\" class=\"secondary-btn\" data-app-action=\"Rejected\" data-app-id=\"" + item.id + "\">Reject</button>" +
+                (item.status === "Accepted"
+                  ? "<a class=\"secondary-btn action-link\" href=\"messages.html?applicationId=" + encodeURIComponent(item.id) + "\">Chat</a>"
+                  : "<button type=\"button\" data-app-action=\"Accepted\" data-app-id=\"" + item.id + "\">Accept</button>" +
+                    "<button type=\"button\" class=\"secondary-btn\" data-app-action=\"Rejected\" data-app-id=\"" + item.id + "\">Reject</button>") +
               "</div>" +
             "</div>"
           );
@@ -839,6 +841,9 @@
               "<strong>Applied: " + escapeHtml(item.job.title) + "</strong>" +
               "<p>Client: " + escapeHtml(item.clientEmail) + "</p>" +
               "<p>Status: " + escapeHtml(item.status) + "</p>" +
+              (item.status === "Accepted"
+                ? "<div class=\"actions\" style=\"margin-top: 8px;\"><a class=\"secondary-btn action-link\" href=\"messages.html?applicationId=" + encodeURIComponent(item.id) + "\">Chat with Client</a></div>"
+                : "") +
             "</div>"
           );
         });
@@ -1068,66 +1073,74 @@
       const orders = ordersRes.orders || {};
       const incoming = orders.incomingApplications || [];
       const myApps = orders.myApplications || [];
-      const sentMessages = messagesRes.messages || [];
+      const messages = messagesRes.messages || [];
 
-      const threads = [];
-      const recipientSuggestions = new Set();
-
-      incoming.forEach(function (item) {
-        if (!item.job) return;
-        recipientSuggestions.add(item.freelancerEmail);
-        threads.push({
-          title: item.freelancerEmail,
-          subtitle: item.job.title,
-          message: "Interested in your listing and waiting for a decision on the application.",
-          time: item.appliedAt,
-          tone: "Client inbox"
+      const chats = [];
+      incoming.concat(myApps).forEach(function (item) {
+        if (!item.job || item.status !== "Accepted") return;
+        const clientSide = item.clientEmail === u.email;
+        chats.push({
+          id: item.id,
+          jobId: item.jobId,
+          title: item.job.title,
+          counterpart: clientSide ? item.freelancerEmail : item.clientEmail,
+          label: clientSide ? "Freelancer chat" : "Client chat",
+          acceptedAt: item.appliedAt
         });
       });
 
-      myApps.forEach(function (item) {
-        if (!item.job) return;
-        recipientSuggestions.add(item.clientEmail);
-        threads.push({
-          title: item.clientEmail,
-          subtitle: item.job.title,
-          message: "Proposal shared for this project. Stay ready for follow-up questions.",
-          time: item.appliedAt,
-          tone: "Freelancer thread"
-        });
-      });
+      const requestedApplicationId = query.get("applicationId");
 
-      sentMessages.forEach(function (item) {
-        const counterpart = item.senderEmail === u.email ? item.recipientEmail : item.senderEmail;
-        recipientSuggestions.add(counterpart);
-        threads.push({
-          title: counterpart,
-          subtitle: item.subject || "Project update",
-          message: item.body,
-          time: item.createdAt,
-          tone: item.senderEmail === u.email ? "Sent message" : "Received message"
+      if (!chats.length) {
+        container.innerHTML = "<div class=\"message-item\"><h4>Chat locked</h4><p>Project chat unlocks after a client accepts a freelancer application.</p><span>Accept an application first, then both sides can talk here.</span></div>";
+        composer.querySelectorAll("select, textarea, button").forEach(function (node) {
+          node.disabled = true;
         });
-      });
-
-      if (!threads.length) {
-        container.innerHTML = "<div class=\"message-item\"><h4>No conversations yet</h4><p>Your conversations will appear here once you start applying or receiving applications.</p><span>Start by browsing jobs or posting a gig.</span></div>";
       } else {
-        container.innerHTML = threads.sort(function (a, b) {
-          return new Date(b.time) - new Date(a.time);
-        }).map(function (thread) {
+        container.innerHTML = chats.map(function (chat) {
+          const chatMessages = messages.filter(function (message) {
+            const sameApp = message.applicationId && message.applicationId === chat.id;
+            const samePeople = (message.senderEmail === u.email && message.recipientEmail === chat.counterpart)
+              || (message.senderEmail === chat.counterpart && message.recipientEmail === u.email);
+            return sameApp || (samePeople && message.subject === chat.title);
+          }).sort(function (a, b) {
+            return new Date(a.createdAt) - new Date(b.createdAt);
+          });
+
+          const messageHtml = chatMessages.length
+            ? chatMessages.map(function (message) {
+                const mine = message.senderEmail === u.email;
+                return "<div class=\"chat-bubble " + (mine ? "mine" : "theirs") + "\">" +
+                  "<strong>" + (mine ? "You" : escapeHtml(chat.counterpart)) + "</strong>" +
+                  "<p>" + escapeHtml(message.body) + "</p>" +
+                  "<span>" + formatRelativeDate(message.createdAt) + "</span>" +
+                "</div>";
+              }).join("")
+            : "<p class=\"muted-line\">No messages yet. Start the project conversation below.</p>";
+
           return "<div class=\"message-item\">" +
-            "<div class=\"card-badge\">" + escapeHtml(thread.tone) + "</div>" +
-            "<h4>" + escapeHtml(thread.title) + "</h4>" +
-            "<p><strong>" + escapeHtml(thread.subtitle) + "</strong></p>" +
-            "<p>" + escapeHtml(thread.message) + "</p>" +
-            "<span>" + formatRelativeDate(thread.time) + "</span>" +
+            "<div class=\"card-badge\">" + escapeHtml(chat.label) + "</div>" +
+            "<h4>" + escapeHtml(chat.title) + "</h4>" +
+            "<p>Chat with " + escapeHtml(chat.counterpart) + "</p>" +
+            "<div class=\"chat-thread\">" + messageHtml + "</div>" +
           "</div>";
         }).join("");
       }
 
-      const recipientField = composer.querySelector('input[name="recipient_email"]');
-      if (recipientField && recipientSuggestions.size && !recipientField.value) {
-        recipientField.placeholder = "Recipient email e.g. " + Array.from(recipientSuggestions)[0];
+      const chatSelect = composer.querySelector('select[name="application_id"]');
+      if (chatSelect && chats.length) {
+        composer.querySelectorAll("select, textarea, button").forEach(function (node) {
+          node.disabled = false;
+        });
+        chatSelect.disabled = false;
+        chatSelect.innerHTML = chats.map(function (chat) {
+          return "<option value=\"" + escapeHtml(chat.id) + "\">" +
+            escapeHtml(chat.title + " - " + chat.counterpart) +
+          "</option>";
+        }).join("");
+        if (requestedApplicationId && chats.some(function (chat) { return chat.id === requestedApplicationId; })) {
+          chatSelect.value = requestedApplicationId;
+        }
       }
 
       if (composer.dataset.bound !== "true") {
@@ -1135,12 +1148,12 @@
         composer.addEventListener("submit", async function (e) {
           e.preventDefault();
           const data = new FormData(composer);
-          const recipientEmail = String(data.get("recipient_email") || "").trim().toLowerCase();
-          const subject = String(data.get("subject") || "").trim();
+          const applicationId = String(data.get("application_id") || "").trim();
           const message = String(data.get("message") || "").trim();
+          const chat = chats.find(function (item) { return item.id === applicationId; });
 
-          if (!recipientEmail || !message) {
-            showFormMessage(composer, "Recipient email and message are required.", true);
+          if (!chat || !message) {
+            showFormMessage(composer, "Choose an accepted project and write a message.", true);
             return;
           }
 
@@ -1150,8 +1163,9 @@
               method: "POST",
               body: {
                 senderEmail: u.email,
-                recipientEmail: recipientEmail,
-                subject: subject || "Project update",
+                recipientEmail: chat.counterpart,
+                applicationId: chat.id,
+                subject: chat.title,
                 body: message
               }
             });

@@ -41,9 +41,8 @@
       <div id="messagesList" class="message-list"></div>
 
       <form id="messageComposer" class="inline-form" style="margin-top: 30px;">
-        <input type="email" name="recipient_email" placeholder="Recipient email">
-        <input type="text" name="subject" placeholder="Conversation topic">
-        <textarea name="message" rows="4" placeholder="Write a quick follow-up or project note"></textarea>
+        <select name="application_id" aria-label="Accepted project chat"></select>
+        <textarea name="message" rows="4" placeholder="Write a project message"></textarea>
         <div class="actions">
           <button type="submit">Send Message</button>
           <a class="secondary-btn action-link" href="orders.html">Open Orders</a>
