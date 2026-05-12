@@ -46,29 +46,41 @@
       <h2>Jane Doe</h2>
       <p>Freelancer | Web Developer | UI/UX Designer</p>
 
-      <div class="profile-details">
-        <div>
-          <strong>Email:</strong>
-          <p>jane.doe@example.com</p>
+      <form id="profileEditForm" class="profile-edit-form">
+        <div class="profile-details">
+          <div>
+            <label for="profileFullName"><strong>Full Name</strong></label>
+            <input id="profileFullName" type="text" name="full_name" required>
+          </div>
+          <div>
+            <label for="profileEmail"><strong>Email</strong></label>
+            <input id="profileEmail" type="email" name="email" required>
+          </div>
+          <div>
+            <label for="profileLocation"><strong>Location</strong></label>
+            <input id="profileLocation" type="text" name="location" placeholder="City, Country">
+          </div>
+          <div>
+            <label for="profileSkills"><strong>Skills / Hiring Needs</strong></label>
+            <input id="profileSkills" type="text" name="skills" placeholder="React, Design, Marketing">
+          </div>
+          <div>
+            <label for="profileAbout"><strong>About Me</strong></label>
+            <textarea id="profileAbout" name="about" rows="4" placeholder="Tell clients or freelancers about yourself"></textarea>
+          </div>
+          <div class="inline-check">
+            <label>
+              <input type="checkbox" name="email_updates">
+              Receive email updates
+            </label>
+          </div>
         </div>
-        <div>
-          <strong>Location:</strong>
-          <p>Mumbai, India</p>
-        </div>
-        <div>
-          <strong>Skills:</strong>
-          <p>React, Figma, JavaScript, HTML, CSS</p>
-        </div>
-        <div>
-          <strong>About Me:</strong>
-          <p>Passionate about building polished web experiences and connecting businesses with the right talent.</p>
-        </div>
-      </div>
 
-      <div class="actions" style="margin-top: 30px;">
-        <button type="button" onclick="window.location.href='settings.html'">Edit Profile</button>
-        <button type="button" onclick="window.location.href='mygigs.html'">View My Gigs</button>
-      </div>
+        <div class="actions" style="margin-top: 30px;">
+          <button type="submit">Save Profile</button>
+          <button type="button" class="secondary-btn" id="profileRoleAction">View My Gigs</button>
+        </div>
+      </form>
     </div>
   </div>
 </div>

@@ -36,30 +36,19 @@
 
     <div class="profile-card">
       <h2>Inbox</h2>
-      <p>Read and reply to client messages from your active gigs.</p>
+      <p>See conversation-style updates from clients and applications across your workspace.</p>
 
-      <div class="message-list">
-        <div class="message-item">
-          <h4>Client: Asha Enterprises</h4>
-          <p>Hi! Can you update the website landing section to include our new product launch?</p>
-          <span>2 hours ago</span>
-        </div>
-        <div class="message-item">
-          <h4>Client: Rahul Singh</h4>
-          <p>Good work on the branding draft. Please share the final files by tomorrow.</p>
-          <span>Yesterday</span>
-        </div>
-        <div class="message-item">
-          <h4>Client: TechStart</h4>
-          <p>I’d like to schedule a call to discuss the mobile app UX follow-up.</p>
-          <span>2 days ago</span>
-        </div>
-      </div>
+      <div id="messagesList" class="message-list"></div>
 
-      <div class="actions" style="margin-top: 30px;">
-        <button>Compose Message</button>
-        <button>View All Conversations</button>
-      </div>
+      <form id="messageComposer" class="inline-form" style="margin-top: 30px;">
+        <input type="email" name="recipient_email" placeholder="Recipient email">
+        <input type="text" name="subject" placeholder="Conversation topic">
+        <textarea name="message" rows="4" placeholder="Write a quick follow-up or project note"></textarea>
+        <div class="actions">
+          <button type="submit">Send Message</button>
+          <a class="secondary-btn action-link" href="orders.html">Open Orders</a>
+        </div>
+      </form>
     </div>
   </div>
 </div>

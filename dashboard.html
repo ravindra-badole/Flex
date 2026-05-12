@@ -33,14 +33,31 @@
   <!-- Main Content -->
   <div class="main">
 
-    <!-- Top Bar -->
     <div class="topbar">
       <a href="index.html" class="back-arrow">&larr;</a>
       <h3>Welcome, User!</h3>
       <img class="user-dp" alt="User DP">
     </div>
 
-    <!-- Stats -->
+    <section class="hero-panel">
+      <div class="hero-copy">
+        <p id="dashboardRoleLabel" class="eyebrow">Freelancer Workspace</p>
+        <h1 id="dashboardHeroTitle">Build gigs, close projects, and grow repeat clients.</h1>
+        <p id="dashboardHeroText">Track your live services, incoming proposals, and high-fit opportunities from one control center.</p>
+        <div class="actions">
+          <button id="dashboardPrimaryAction" type="button" onclick="window.location.href='create-gig.html'">Create Gig</button>
+          <button id="dashboardSecondaryAction" type="button" class="secondary-btn" onclick="window.location.href='browse-jobs.html'">Explore Jobs</button>
+        </div>
+      </div>
+      <div class="hero-side">
+        <div class="spotlight-card">
+          <p class="eyebrow">This Week</p>
+          <strong id="dashboardSpotlightTitle">Stay active for faster replies</strong>
+          <p id="dashboardSpotlightText">Freelancers with fresh gigs and recent proposals usually get stronger marketplace visibility.</p>
+        </div>
+      </div>
+    </section>
+
     <div class="stats">
       <div class="card">
         <h3>12</h3>
@@ -56,12 +73,25 @@
       </div>
     </div>
 
-    <!-- Actions -->
-    <div class="actions">
-      <button type="button" onclick="window.location.href='create-gig.html'">Create Gig</button>
-      <button type="button" onclick="window.location.href='post-job.html'">Post Job</button>
-      <button type="button" onclick="window.location.href='browse-jobs.html'">Browse Jobs</button>
-    </div>
+    <section class="dashboard-grid">
+      <div class="profile-card wide-card">
+        <h2>Performance Snapshot</h2>
+        <p>Quick reading of your account strength, service count, and proposal pulse.</p>
+        <div id="dashboardSummary" class="highlight-grid"></div>
+      </div>
+
+      <div class="profile-card">
+        <h2>Recent Activity</h2>
+        <p>What is moving right now across your hiring and freelancer pipeline.</p>
+        <div id="dashboardActivity" class="activity-list"></div>
+      </div>
+    </section>
+
+    <section class="profile-card">
+      <h2>Discover Opportunities</h2>
+      <p>High-fit projects you can review and apply to quickly.</p>
+      <div id="dashboardDiscover" class="activity-list activity-list-columns"></div>
+    </section>
 
   </div>
 

@@ -1,8 +1,11 @@
 ﻿(function () {
   "use strict";
 
-  const API_BASE = "http://localhost:4000/api";
+  const API_BASE = window.location.origin === "http://localhost:4000"
+    ? "/api"
+    : "http://localhost:4000/api";
   const SESSION_KEY = "sb_session";
+  const THEME_KEY = "sb_theme";
   const REQUEST_TIMEOUT_MS = 12000;
 
   const path = (window.location.pathname.split("/").pop() || "index.html").toLowerCase();
@@ -27,11 +30,53 @@
     localStorage.removeItem(SESSION_KEY);
   }
 
+  function getTheme() {
+    return localStorage.getItem(THEME_KEY) === "light" ? "light" : "dark";
+  }
+
+  function applyTheme(theme) {
+    const nextTheme = theme === "light" ? "light" : "dark";
+    document.body.classList.toggle("theme-light", nextTheme === "light");
+    document.body.classList.toggle("theme-dark", nextTheme === "dark");
+    document.querySelectorAll("[data-theme-toggle]").forEach(function (btn) {
+      btn.textContent = nextTheme === "light" ? "Dark Mode" : "Bright Mode";
+      btn.setAttribute("aria-label", "Switch to " + (nextTheme === "light" ? "dark" : "bright") + " mode");
+    });
+  }
+
+  function bindThemeToggle() {
+    const host = document.querySelector(".nav-links") || document.querySelector(".topbar") || document.querySelector(".login-box") || document.querySelector(".signup-box");
+    if (host && !host.querySelector("[data-theme-toggle]")) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "theme-toggle";
+      btn.dataset.themeToggle = "true";
+      btn.addEventListener("click", function () {
+        const nextTheme = getTheme() === "light" ? "dark" : "light";
+        localStorage.setItem(THEME_KEY, nextTheme);
+        applyTheme(nextTheme);
+      });
+      const userDp = host.querySelector(".user-dp");
+      if (userDp) host.insertBefore(btn, userDp);
+      else host.appendChild(btn);
+    }
+
+    applyTheme(getTheme());
+  }
+
   function getNextDestination(defaultPath) {
     const next = query.get("next");
     if (!next) return defaultPath;
     if (!/^[a-z0-9\-_.]+\.html(\?.*)?$/i.test(next)) return defaultPath;
     return next;
+  }
+
+  function getRole(user) {
+    return user && user.profile && user.profile.role === "Client" ? "Client" : "Freelancer";
+  }
+
+  function isClient(user) {
+    return getRole(user) === "Client";
   }
 
   function ensureProtectedRoute() {
@@ -126,6 +171,44 @@
     });
   }
 
+  function applyRoleNavigation(user) {
+    if (!user) return;
+
+    const hiddenForClient = new Set(["mygigs.html", "browse-jobs.html"]);
+    const hiddenForFreelancer = new Set(["post-job.html", "orders.html"]);
+    const hiddenLinks = isClient(user) ? hiddenForClient : hiddenForFreelancer;
+
+    document.querySelectorAll(".sidebar a").forEach(function (a) {
+      const href = (a.getAttribute("href") || "").split("?")[0].toLowerCase();
+      const item = a.closest("li");
+      if (item) item.style.display = "";
+      if (hiddenLinks.has(href)) {
+        if (item) item.style.display = "none";
+      }
+    });
+
+    if (hiddenLinks.has(path)) {
+      window.location.href = "dashboard.html";
+    }
+  }
+
+  function bindSidebarLogo() {
+    document.querySelectorAll(".sidebar h2").forEach(function (logo) {
+      logo.setAttribute("role", "link");
+      logo.setAttribute("tabindex", "0");
+      logo.style.cursor = "pointer";
+      logo.addEventListener("click", function () {
+        window.location.href = "index.html";
+      });
+      logo.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          window.location.href = "index.html";
+        }
+      });
+    });
+  }
+
   function bindLogout() {
     document.querySelectorAll(".logout-item a").forEach(function (a) {
       a.addEventListener("click", function (e) {
@@ -154,6 +237,57 @@
     }
   }
 
+  function hydrateHomeAuthState(user) {
+    if (path !== "index.html" || !user) return;
+
+    const nav = document.querySelector(".nav-links");
+    if (nav) {
+      nav.querySelectorAll('a[href="login.html"], a[href="signup.html"]').forEach(function (a) {
+        a.remove();
+      });
+
+      if (!nav.querySelector('a[href="dashboard.html"]')) {
+        const dashboardLink = document.createElement("a");
+        dashboardLink.href = "dashboard.html";
+        dashboardLink.className = "btn btn-primary";
+        dashboardLink.textContent = "Dashboard";
+        nav.appendChild(dashboardLink);
+      }
+
+      if (!nav.querySelector("[data-home-logout]")) {
+        const logoutLink = document.createElement("a");
+        logoutLink.href = "index.html";
+        logoutLink.dataset.homeLogout = "true";
+        logoutLink.textContent = "Logout";
+        logoutLink.addEventListener("click", function (e) {
+          e.preventDefault();
+          clearSession();
+          currentUserCache = null;
+          window.location.href = "index.html";
+        });
+        nav.appendChild(logoutLink);
+      }
+    }
+
+    const buttons = document.querySelectorAll(".hero-buttons button");
+    if (buttons.length >= 2) {
+      const client = isClient(user);
+      buttons[0].textContent = client ? "Post a Job" : "Create a Gig";
+      buttons[0].onclick = function () {
+        window.location.href = client ? "post-job.html" : "create-gig.html";
+      };
+      buttons[1].textContent = client ? "Go to Dashboard" : "Browse Jobs";
+      buttons[1].onclick = function () {
+        window.location.href = client ? "dashboard.html" : "browse-jobs.html";
+      };
+    }
+
+    const heroPill = document.querySelector(".hero-pill");
+    if (heroPill) {
+      heroPill.textContent = getRole(user) + " account active";
+    }
+  }
+
   function bindAuthForms() {
     const next = query.get("next");
     if (next) {
@@ -175,6 +309,7 @@
         const lastName = String(data.get("last_name") || "").trim();
         const email = String(data.get("email") || "").trim().toLowerCase();
         const password = String(data.get("password") || "");
+        const role = String(data.get("role") || "Freelancer");
 
         if (!firstName || !email || !password) {
           showFormMessage(form, "Please fill all required fields.", true);
@@ -185,12 +320,13 @@
         try {
           const res = await api("/auth/signup", {
             method: "POST",
-            body: { firstName: firstName, lastName: lastName, email: email, password: password }
+            body: { firstName: firstName, lastName: lastName, email: email, password: password, role: role }
           });
 
-          setSession({ email: res.user.email, loginAt: new Date().toISOString() });
+          setSession({ email: res.user.email, role: getRole(res.user), loginAt: new Date().toISOString() });
           currentUserCache = res.user;
-          showFormMessage(form, "Account created. Redirecting...", false);
+          if (typeof window.refreshUserDp === "function") window.refreshUserDp();
+          showFormMessage(form, getRole(res.user) + " account created. Opening dashboard...", false);
           setTimeout(function () {
             window.location.href = getNextDestination("dashboard.html");
           }, 400);
@@ -224,9 +360,10 @@
             body: { email: email, password: password }
           });
 
-          setSession({ email: res.user.email, loginAt: new Date().toISOString() });
+          setSession({ email: res.user.email, role: getRole(res.user), loginAt: new Date().toISOString() });
           currentUserCache = res.user;
-          showFormMessage(form, "Login successful. Redirecting...", false);
+          if (typeof window.refreshUserDp === "function") window.refreshUserDp();
+          showFormMessage(form, getRole(res.user) + " login successful. Opening dashboard...", false);
           setTimeout(function () {
             window.location.href = getNextDestination("dashboard.html");
           }, 350);
@@ -251,7 +388,51 @@
 
     const welcome = document.querySelector(".topbar h3");
     if (welcome && /welcome/i.test(welcome.textContent)) {
-      welcome.textContent = "Welcome, " + u.firstName + "!";
+      welcome.textContent = "Welcome, " + u.firstName + " (" + getRole(u) + ")!";
+    }
+  }
+
+  function applyRoleDashboardShell(user) {
+    if (path !== "dashboard.html" || !user) return;
+
+    const client = isClient(user);
+    const roleLabel = document.getElementById("dashboardRoleLabel");
+    const heroTitle = document.getElementById("dashboardHeroTitle");
+    const heroText = document.getElementById("dashboardHeroText");
+    const primaryAction = document.getElementById("dashboardPrimaryAction");
+    const secondaryAction = document.getElementById("dashboardSecondaryAction");
+    const spotlightTitle = document.getElementById("dashboardSpotlightTitle");
+    const spotlightText = document.getElementById("dashboardSpotlightText");
+    const statLabels = document.querySelectorAll(".stats .card p");
+
+    if (roleLabel) roleLabel.textContent = client ? "Client Workspace" : "Freelancer Workspace";
+    if (heroTitle) heroTitle.textContent = client
+      ? "Post projects, review applications, and hire faster."
+      : "Build gigs, close projects, and grow repeat clients.";
+    if (heroText) heroText.textContent = client
+      ? "Track posted jobs, incoming proposals, hiring activity, and project conversations from one place."
+      : "Track your live services, proposals, and high-fit opportunities from one control center.";
+    if (primaryAction) {
+      primaryAction.textContent = client ? "Post Job" : "Create Gig";
+      primaryAction.onclick = function () {
+        window.location.href = client ? "post-job.html" : "create-gig.html";
+      };
+    }
+    if (secondaryAction) {
+      secondaryAction.textContent = client ? "Review Orders" : "Explore Jobs";
+      secondaryAction.onclick = function () {
+        window.location.href = client ? "orders.html" : "browse-jobs.html";
+      };
+    }
+    if (spotlightTitle) spotlightTitle.textContent = client ? "Clear briefs get better proposals" : "Stay active for faster replies";
+    if (spotlightText) spotlightText.textContent = client
+      ? "Clients with specific budgets, timelines, and categories attract stronger freelancers."
+      : "Freelancers with fresh gigs and recent proposals usually get stronger marketplace visibility.";
+
+    if (statLabels.length >= 3) {
+      statLabels[0].textContent = client ? "Open Hires" : "Active Orders";
+      statLabels[1].textContent = client ? "Posted Jobs" : "Live Gigs";
+      statLabels[2].textContent = client ? "Hiring Budget" : "Potential Earnings";
     }
   }
 
@@ -263,14 +444,90 @@
     const profile = u.profile || {};
     const h2 = document.querySelector(".profile-card h2");
     const intro = document.querySelector(".profile-card > p");
-    const detailPs = document.querySelectorAll(".profile-details div p");
+    const form = document.getElementById("profileEditForm");
 
     if (h2) h2.textContent = (u.firstName + " " + u.lastName).trim();
     if (intro) intro.textContent = (profile.role || "Freelancer") + " | SkillBridge User";
-    if (detailPs[0]) detailPs[0].textContent = u.email;
-    if (detailPs[1]) detailPs[1].textContent = profile.location || "India";
-    if (detailPs[2]) detailPs[2].textContent = profile.skills || "HTML, CSS, JavaScript";
-    if (detailPs[3]) detailPs[3].textContent = profile.about || "Ready to build quality client projects.";
+
+    if (form) {
+      const fullName = form.querySelector('[name="full_name"]');
+      const email = form.querySelector('[name="email"]');
+      const location = form.querySelector('[name="location"]');
+      const skills = form.querySelector('[name="skills"]');
+      const about = form.querySelector('[name="about"]');
+      const updates = form.querySelector('[name="email_updates"]');
+
+      if (fullName) fullName.value = (u.firstName + " " + u.lastName).trim();
+      if (email) email.value = u.email;
+      if (location) location.value = profile.location || "India";
+      if (skills) skills.value = profile.skills || "HTML, CSS, JavaScript";
+      if (about) about.value = profile.about || "Ready to build quality client projects.";
+      if (updates) updates.checked = Boolean(profile.emailUpdates);
+
+      if (form.dataset.bound !== "true") {
+        form.dataset.bound = "true";
+        form.addEventListener("submit", async function (e) {
+          e.preventDefault();
+          const data = new FormData(form);
+          const fullNameValue = String(data.get("full_name") || "").trim();
+          const nameParts = fullNameValue.split(/\s+/).filter(Boolean);
+          const firstName = nameParts.shift() || u.firstName;
+          const lastName = nameParts.join(" ") || "";
+          const nextEmail = String(data.get("email") || "").trim().toLowerCase();
+          const nextRole = getRole(u);
+          const nextLocation = String(data.get("location") || "").trim();
+          const nextSkills = String(data.get("skills") || "").trim();
+          const nextAbout = String(data.get("about") || "").trim();
+
+          if (!firstName || !nextEmail) {
+            showFormMessage(form, "Name and email are required.", true);
+            return;
+          }
+
+          setFormLoading(form, true, "Saving...");
+          try {
+            const res = await api("/users/" + encodeURIComponent(u.email), {
+              method: "PATCH",
+              body: {
+                firstName: firstName,
+                lastName: lastName,
+                email: nextEmail,
+                profile: {
+                  role: nextRole,
+                  location: nextLocation || "India",
+                  skills: nextSkills || (nextRole === "Client" ? "Hiring, Project Management" : "HTML, CSS, JavaScript"),
+                  about: nextAbout || (nextRole === "Client"
+                    ? "Ready to hire skilled freelancers for quality projects."
+                    : "Ready to build quality client projects."),
+                  emailUpdates: Boolean(data.get("email_updates"))
+                }
+              }
+            });
+
+            setSession({ email: res.user.email, role: getRole(res.user), loginAt: new Date().toISOString() });
+            currentUserCache = res.user;
+            if (h2) h2.textContent = (res.user.firstName + " " + res.user.lastName).trim();
+            if (intro) intro.textContent = getRole(res.user) + " | SkillBridge User";
+            if (typeof window.refreshUserDp === "function") window.refreshUserDp();
+            showFormMessage(form, "Profile saved successfully.", false);
+            applyRoleNavigation(res.user);
+            updateTopbarUser(res.user);
+          } catch (err) {
+            showFormMessage(form, err.message, true);
+          } finally {
+            setFormLoading(form, false);
+          }
+        });
+      }
+    }
+
+    const secondaryAction = document.getElementById("profileRoleAction");
+    if (secondaryAction) {
+      secondaryAction.textContent = isClient(u) ? "Post Job" : "View My Gigs";
+      secondaryAction.onclick = function () {
+        window.location.href = isClient(u) ? "post-job.html" : "mygigs.html";
+      };
+    }
   }
 
   async function hydrateSettingsPage(user) {
@@ -400,10 +657,13 @@
 
       container.innerHTML = gigs.map(function (g) {
         return "<div class=\"gig-card\">" +
+          "<div class=\"card-badge\">Live Service</div>" +
           "<h3>" + escapeHtml(g.title) + "</h3>" +
           "<p>" + escapeHtml(g.description) + "</p>" +
-          "<p><strong>Price:</strong> Rs " + Number(g.price).toLocaleString("en-IN") + "</p>" +
-          "<p><strong>Delivery:</strong> " + g.deliveryDays + " days</p>" +
+          "<div class=\"card-meta\">" +
+            "<span><strong>Price:</strong> Rs " + Number(g.price).toLocaleString("en-IN") + "</span>" +
+            "<span><strong>Delivery:</strong> " + g.deliveryDays + " days</span>" +
+          "</div>" +
         "</div>";
       }).join("");
     } catch (err) {
@@ -494,12 +754,16 @@
         const disabled = ownJob || alreadyApplied ? "disabled" : "";
 
         return "<div class=\"gig-card\">" +
+          "<div class=\"card-badge\">Open Project</div>" +
           "<h3>" + escapeHtml(job.title) + "</h3>" +
           "<p>" + escapeHtml(job.description) + "</p>" +
-          "<p><strong>Category:</strong> " + escapeHtml(job.category) + "</p>" +
-          "<p><strong>Budget:</strong> Rs " + Number(job.budget).toLocaleString("en-IN") + "</p>" +
-          "<p><strong>Deadline:</strong> " + job.deadlineDays + " days</p>" +
+          "<div class=\"card-meta\">" +
+            "<span><strong>Category:</strong> " + escapeHtml(job.category) + "</span>" +
+            "<span><strong>Budget:</strong> Rs " + Number(job.budget).toLocaleString("en-IN") + "</span>" +
+            "<span><strong>Deadline:</strong> " + job.deadlineDays + " days</span>" +
+          "</div>" +
           "<div class=\"actions\" style=\"margin-top: 12px;\">" +
+            "<a class=\"secondary-btn action-link\" href=\"job-details.html?jobId=" + encodeURIComponent(job.id) + "\">View Details</a>" +
             "<button type=\"button\" data-apply-job=\"" + job.id + "\" " + disabled + ">" + buttonText + "</button>" +
           "</div>" +
         "</div>";
@@ -542,7 +806,7 @@
       const myApps = orders.myApplications || [];
 
       const cards = [];
-      cards.push("<div><strong>Jobs You Posted</strong><p>" + (postedJobs.length ? postedJobs.length + " active jobs" : "No jobs posted yet") + "</p></div>");
+      cards.push("<div class=\"order-summary\"><strong>Jobs You Posted</strong><p>" + (postedJobs.length ? postedJobs.length + " active jobs in your pipeline" : "No jobs posted yet") + "</p></div>");
 
       if (!incoming.length) {
         cards.push("<div><strong>Applications On Your Jobs</strong><p>No applications received yet.</p></div>");
@@ -551,6 +815,7 @@
           if (!item.job) return;
           cards.push(
             "<div>" +
+              "<div class=\"card-badge\">Client View</div>" +
               "<strong>" + escapeHtml(item.job.title) + "</strong>" +
               "<p>Freelancer: " + escapeHtml(item.freelancerEmail) + "</p>" +
               "<p>Status: " + escapeHtml(item.status) + "</p>" +
@@ -570,6 +835,7 @@
           if (!item.job) return;
           cards.push(
             "<div>" +
+              "<div class=\"card-badge\">Freelancer View</div>" +
               "<strong>Applied: " + escapeHtml(item.job.title) + "</strong>" +
               "<p>Client: " + escapeHtml(item.clientEmail) + "</p>" +
               "<p>Status: " + escapeHtml(item.status) + "</p>" +
@@ -615,20 +881,19 @@
     if (cards.length < 3) return;
 
     try {
-      const [gigsRes, ordersRes] = await Promise.all([
+      const [gigsRes, jobsRes, ordersRes] = await Promise.all([
         api("/gigs?ownerEmail=" + encodeURIComponent(u.email)),
+        api("/jobs?ownerEmail=" + encodeURIComponent(u.email)),
         api("/orders?email=" + encodeURIComponent(u.email))
       ]);
 
       const gigs = gigsRes.gigs || [];
+      const jobs = jobsRes.jobs || [];
       const incoming = (ordersRes.orders && ordersRes.orders.incomingApplications) || [];
       const myApps = (ordersRes.orders && ordersRes.orders.myApplications) || [];
 
       const acceptedAsFreelancer = myApps.filter(function (a) { return a.status === "Accepted"; });
       const acceptedAsClient = incoming.filter(function (a) { return a.status === "Accepted"; });
-
-      const activeOrders = acceptedAsFreelancer.length + acceptedAsClient.length;
-      const completedJobs = Math.max(gigs.length, acceptedAsFreelancer.length);
 
       const earningsFromJobs = acceptedAsFreelancer.reduce(function (sum, a) {
         const budget = a.job ? Number(a.job.budget || 0) : 0;
@@ -639,13 +904,418 @@
         return sum + Number(g.price || 0);
       }, 0);
 
-      cards[0].textContent = String(activeOrders || 0);
-      cards[1].textContent = String(completedJobs || 0);
-      cards[2].textContent = "Rs " + Number(earningsFromJobs + earningsFromGigs).toLocaleString("en-IN");
+      if (isClient(u)) {
+        const hiringBudget = jobs.reduce(function (sum, job) {
+          return sum + Number(job.budget || 0);
+        }, 0);
+        cards[0].textContent = String(acceptedAsClient.length || 0);
+        cards[1].textContent = String(jobs.length || 0);
+        cards[2].textContent = "Rs " + Number(hiringBudget).toLocaleString("en-IN");
+      } else {
+        cards[0].textContent = String(acceptedAsFreelancer.length || 0);
+        cards[1].textContent = String(gigs.length || 0);
+        cards[2].textContent = "Rs " + Number(earningsFromJobs + earningsFromGigs).toLocaleString("en-IN");
+      }
     } catch (_) {
       cards[0].textContent = "0";
       cards[1].textContent = "0";
       cards[2].textContent = "Rs 0";
+    }
+  }
+
+  async function renderDashboardPanels(user) {
+    if (path !== "dashboard.html") return;
+    const u = user || (await getCurrentUser());
+    if (!u) return;
+
+    const summaryNode = document.getElementById("dashboardSummary");
+    const activityNode = document.getElementById("dashboardActivity");
+    const discoverNode = document.getElementById("dashboardDiscover");
+
+    if (!summaryNode || !activityNode || !discoverNode) return;
+
+    try {
+      const [gigsRes, jobsRes, ordersRes] = await Promise.all([
+        api("/gigs?ownerEmail=" + encodeURIComponent(u.email)),
+        api("/jobs"),
+        api("/orders?email=" + encodeURIComponent(u.email))
+      ]);
+
+      const gigs = gigsRes.gigs || [];
+      const jobs = jobsRes.jobs || [];
+      const orders = ordersRes.orders || {};
+      const incoming = orders.incomingApplications || [];
+      const myApps = orders.myApplications || [];
+      const client = isClient(u);
+      const postedJobs = jobs.filter(function (job) {
+        return job.ownerEmail === u.email;
+      });
+
+      if (client) {
+        summaryNode.innerHTML =
+          "<div class=\"highlight-card\">" +
+            "<p class=\"eyebrow\">Account Type</p>" +
+            "<h3>Client</h3>" +
+            "<p>Hiring dashboard for posting work and reviewing freelancer applications.</p>" +
+          "</div>" +
+          "<div class=\"highlight-card\">" +
+            "<p class=\"eyebrow\">Posted Jobs</p>" +
+            "<h3>" + postedJobs.length + " jobs live</h3>" +
+            "<p>Open project briefs help freelancers understand your requirements.</p>" +
+          "</div>" +
+          "<div class=\"highlight-card\">" +
+            "<p class=\"eyebrow\">Applications</p>" +
+            "<h3>" + incoming.length + " received</h3>" +
+            "<p>Review, accept, or reject applications from Orders.</p>" +
+          "</div>";
+      } else {
+        summaryNode.innerHTML =
+          "<div class=\"highlight-card\">" +
+            "<p class=\"eyebrow\">Account Type</p>" +
+            "<h3>Freelancer</h3>" +
+            "<p>" + escapeHtml((u.profile && u.profile.skills) || "Add skills in settings") + "</p>" +
+          "</div>" +
+          "<div class=\"highlight-card\">" +
+            "<p class=\"eyebrow\">Service Count</p>" +
+            "<h3>" + gigs.length + " gigs live</h3>" +
+            "<p>Keep your packages active to rank better in search.</p>" +
+          "</div>" +
+          "<div class=\"highlight-card\">" +
+            "<p class=\"eyebrow\">Proposal Pulse</p>" +
+            "<h3>" + myApps.length + " proposals</h3>" +
+            "<p>Track where your applications stand across open projects.</p>" +
+          "</div>";
+      }
+
+      const featuredJobs = jobs.filter(function (job) {
+        return job.ownerEmail !== u.email;
+      }).slice(0, 3);
+
+      if (client) {
+        if (!postedJobs.length) {
+          discoverNode.innerHTML = "<div class=\"activity-card\"><strong>No jobs posted yet</strong><p>Post your first job to start receiving freelancer applications.</p><div class=\"actions\"><a class=\"secondary-btn action-link\" href=\"post-job.html\">Post Job</a></div></div>";
+        } else {
+          discoverNode.innerHTML = postedJobs.slice(0, 3).map(function (job) {
+            return "<a class=\"activity-card link-card\" href=\"job-details.html?jobId=" + encodeURIComponent(job.id) + "\">" +
+              "<span class=\"eyebrow\">Your Project</span>" +
+              "<strong>" + escapeHtml(job.title) + "</strong>" +
+              "<p>Budget: Rs " + Number(job.budget).toLocaleString("en-IN") + " • " + job.deadlineDays + " day deadline</p>" +
+            "</a>";
+          }).join("");
+        }
+      } else if (!featuredJobs.length) {
+        discoverNode.innerHTML = "<div class=\"activity-card\"><strong>No opportunities yet</strong><p>Create a gig now and check Browse Jobs again later.</p></div>";
+      } else {
+        discoverNode.innerHTML = featuredJobs.map(function (job) {
+          return "<a class=\"activity-card link-card\" href=\"job-details.html?jobId=" + encodeURIComponent(job.id) + "\">" +
+            "<span class=\"eyebrow\">" + escapeHtml(job.category) + "</span>" +
+            "<strong>" + escapeHtml(job.title) + "</strong>" +
+            "<p>Budget: Rs " + Number(job.budget).toLocaleString("en-IN") + " • " + job.deadlineDays + " day turnaround</p>" +
+          "</a>";
+        }).join("");
+      }
+
+      const activityItems = [];
+      incoming.slice(0, 2).forEach(function (item) {
+        if (!item.job) return;
+        activityItems.push(
+          "<div class=\"activity-card\">" +
+            "<span class=\"eyebrow\">New Application</span>" +
+            "<strong>" + escapeHtml(item.freelancerEmail) + "</strong>" +
+            "<p>Applied to " + escapeHtml(item.job.title) + " with status " + escapeHtml(item.status) + ".</p>" +
+          "</div>"
+        );
+      });
+
+      myApps.slice(0, 2).forEach(function (item) {
+        if (!item.job) return;
+        activityItems.push(
+          "<div class=\"activity-card\">" +
+            "<span class=\"eyebrow\">Proposal Tracker</span>" +
+            "<strong>" + escapeHtml(item.job.title) + "</strong>" +
+            "<p>Your proposal is currently " + escapeHtml(item.status) + ".</p>" +
+          "</div>"
+        );
+      });
+
+      if (!activityItems.length) {
+        activityItems.push(client
+          ? "<div class=\"activity-card\"><span class=\"eyebrow\">Fresh Start</span><strong>No recent hiring activity</strong><p>Post a job to start receiving applications from freelancers.</p></div>"
+          : "<div class=\"activity-card\"><span class=\"eyebrow\">Fresh Start</span><strong>No recent activity</strong><p>Create a gig or apply to a job to start building momentum.</p></div>");
+      }
+
+      activityNode.innerHTML = activityItems.join("");
+    } catch (err) {
+      summaryNode.innerHTML = "<div class=\"activity-card\"><strong>Dashboard unavailable</strong><p>" + escapeHtml(err.message) + "</p></div>";
+      activityNode.innerHTML = "";
+      discoverNode.innerHTML = "";
+    }
+  }
+
+  async function renderMessagesPage(user) {
+    if (path !== "messages.html") return;
+    const u = user || (await getCurrentUser());
+    const container = document.getElementById("messagesList");
+    const composer = document.getElementById("messageComposer");
+    if (!u || !container || !composer) return;
+
+    try {
+      const [ordersRes, messagesRes] = await Promise.all([
+        api("/orders?email=" + encodeURIComponent(u.email)),
+        api("/messages?email=" + encodeURIComponent(u.email))
+      ]);
+
+      const orders = ordersRes.orders || {};
+      const incoming = orders.incomingApplications || [];
+      const myApps = orders.myApplications || [];
+      const sentMessages = messagesRes.messages || [];
+
+      const threads = [];
+      const recipientSuggestions = new Set();
+
+      incoming.forEach(function (item) {
+        if (!item.job) return;
+        recipientSuggestions.add(item.freelancerEmail);
+        threads.push({
+          title: item.freelancerEmail,
+          subtitle: item.job.title,
+          message: "Interested in your listing and waiting for a decision on the application.",
+          time: item.appliedAt,
+          tone: "Client inbox"
+        });
+      });
+
+      myApps.forEach(function (item) {
+        if (!item.job) return;
+        recipientSuggestions.add(item.clientEmail);
+        threads.push({
+          title: item.clientEmail,
+          subtitle: item.job.title,
+          message: "Proposal shared for this project. Stay ready for follow-up questions.",
+          time: item.appliedAt,
+          tone: "Freelancer thread"
+        });
+      });
+
+      sentMessages.forEach(function (item) {
+        const counterpart = item.senderEmail === u.email ? item.recipientEmail : item.senderEmail;
+        recipientSuggestions.add(counterpart);
+        threads.push({
+          title: counterpart,
+          subtitle: item.subject || "Project update",
+          message: item.body,
+          time: item.createdAt,
+          tone: item.senderEmail === u.email ? "Sent message" : "Received message"
+        });
+      });
+
+      if (!threads.length) {
+        container.innerHTML = "<div class=\"message-item\"><h4>No conversations yet</h4><p>Your conversations will appear here once you start applying or receiving applications.</p><span>Start by browsing jobs or posting a gig.</span></div>";
+      } else {
+        container.innerHTML = threads.sort(function (a, b) {
+          return new Date(b.time) - new Date(a.time);
+        }).map(function (thread) {
+          return "<div class=\"message-item\">" +
+            "<div class=\"card-badge\">" + escapeHtml(thread.tone) + "</div>" +
+            "<h4>" + escapeHtml(thread.title) + "</h4>" +
+            "<p><strong>" + escapeHtml(thread.subtitle) + "</strong></p>" +
+            "<p>" + escapeHtml(thread.message) + "</p>" +
+            "<span>" + formatRelativeDate(thread.time) + "</span>" +
+          "</div>";
+        }).join("");
+      }
+
+      const recipientField = composer.querySelector('input[name="recipient_email"]');
+      if (recipientField && recipientSuggestions.size && !recipientField.value) {
+        recipientField.placeholder = "Recipient email e.g. " + Array.from(recipientSuggestions)[0];
+      }
+
+      if (composer.dataset.bound !== "true") {
+        composer.dataset.bound = "true";
+        composer.addEventListener("submit", async function (e) {
+          e.preventDefault();
+          const data = new FormData(composer);
+          const recipientEmail = String(data.get("recipient_email") || "").trim().toLowerCase();
+          const subject = String(data.get("subject") || "").trim();
+          const message = String(data.get("message") || "").trim();
+
+          if (!recipientEmail || !message) {
+            showFormMessage(composer, "Recipient email and message are required.", true);
+            return;
+          }
+
+          setFormLoading(composer, true, "Sending...");
+          try {
+            await api("/messages", {
+              method: "POST",
+              body: {
+                senderEmail: u.email,
+                recipientEmail: recipientEmail,
+                subject: subject || "Project update",
+                body: message
+              }
+            });
+            showFormMessage(composer, "Message sent successfully.", false);
+            composer.reset();
+            renderMessagesPage(u);
+          } catch (err) {
+            showFormMessage(composer, err.message, true);
+          } finally {
+            setFormLoading(composer, false);
+          }
+        });
+      }
+    } catch (err) {
+      container.innerHTML = "<div class=\"message-item\"><h4>Unable to load messages</h4><p>" + escapeHtml(err.message) + "</p></div>";
+    }
+  }
+
+  async function renderNotificationsPage(user) {
+    if (path !== "notifications.html") return;
+    const u = user || (await getCurrentUser());
+    const container = document.getElementById("notificationsList");
+    const markAll = document.getElementById("markAllRead");
+    if (!u || !container) return;
+
+    const storageKey = "sb_notifications_seen_" + u.email;
+
+    try {
+      const res = await api("/orders?email=" + encodeURIComponent(u.email));
+      const orders = res.orders || {};
+      const incoming = orders.incomingApplications || [];
+      const myApps = orders.myApplications || [];
+      const postedJobs = orders.postedJobs || [];
+
+      const notifications = [];
+
+      postedJobs.slice(0, 2).forEach(function (job) {
+        notifications.push({
+          title: "Job live in marketplace",
+          message: job.title + " is active and visible to freelancers.",
+          createdAt: job.createdAt || new Date().toISOString()
+        });
+      });
+
+      incoming.slice(0, 3).forEach(function (item) {
+        if (!item.job) return;
+        notifications.push({
+          title: "New application received",
+          message: item.freelancerEmail + " applied to " + item.job.title + ".",
+          createdAt: item.appliedAt
+        });
+      });
+
+      myApps.slice(0, 3).forEach(function (item) {
+        if (!item.job) return;
+        notifications.push({
+          title: "Proposal update",
+          message: "Your application for " + item.job.title + " is " + item.status + ".",
+          createdAt: item.appliedAt
+        });
+      });
+
+      if (!notifications.length) {
+        container.innerHTML = "<div><strong>No notifications yet</strong><p>Activity alerts will appear here after you apply to jobs or receive applications.</p></div>";
+      } else {
+        const seen = localStorage.getItem(storageKey) === "true";
+        container.innerHTML = notifications.sort(function (a, b) {
+          return new Date(b.createdAt) - new Date(a.createdAt);
+        }).map(function (item) {
+          return "<div class=\"" + (seen ? "" : "unread-card") + "\">" +
+            "<strong>" + escapeHtml(item.title) + "</strong>" +
+            "<p>" + escapeHtml(item.message) + "</p>" +
+            "<p class=\"muted-line\">" + formatRelativeDate(item.createdAt) + "</p>" +
+          "</div>";
+        }).join("");
+      }
+
+      if (markAll && markAll.dataset.bound !== "true") {
+        markAll.dataset.bound = "true";
+        markAll.addEventListener("click", function () {
+          localStorage.setItem(storageKey, "true");
+          renderNotificationsPage(u);
+        });
+      }
+    } catch (err) {
+      container.innerHTML = "<div><strong>Unable to load notifications</strong><p>" + escapeHtml(err.message) + "</p></div>";
+    }
+  }
+
+  async function renderJobDetailsPage(user) {
+    if (path !== "job-details.html") return;
+    const u = user || (await getCurrentUser());
+    const titleNode = document.getElementById("jobTitle");
+    const metaNode = document.getElementById("jobMeta");
+    const descriptionNode = document.getElementById("jobDescription");
+    const applyBtn = document.getElementById("jobApplyButton");
+    const statusNode = document.getElementById("jobStatus");
+    if (!u || !titleNode || !metaNode || !descriptionNode || !applyBtn || !statusNode) return;
+
+    try {
+      const [jobsRes, ordersRes] = await Promise.all([
+        api("/jobs"),
+        api("/orders?email=" + encodeURIComponent(u.email))
+      ]);
+
+      const jobs = jobsRes.jobs || [];
+      const requestedId = query.get("jobId");
+      const job = jobs.find(function (item) { return item.id === requestedId; }) || jobs[0];
+
+      if (!job) {
+        titleNode.textContent = "No job available";
+        metaNode.innerHTML = "<p>No open jobs were found.</p>";
+        descriptionNode.textContent = "Return to Browse Jobs and try again later.";
+        applyBtn.style.display = "none";
+        return;
+      }
+
+      const myApps = (ordersRes.orders && ordersRes.orders.myApplications) || [];
+      const existingApp = myApps.find(function (item) { return item.jobId === job.id; });
+      const ownJob = job.ownerEmail === u.email;
+
+      titleNode.textContent = job.title;
+      metaNode.innerHTML =
+        "<div class=\"detail-chip\">Budget: Rs " + Number(job.budget).toLocaleString("en-IN") + "</div>" +
+        "<div class=\"detail-chip\">Category: " + escapeHtml(job.category) + "</div>" +
+        "<div class=\"detail-chip\">Deadline: " + job.deadlineDays + " days</div>" +
+        "<div class=\"detail-chip\">Client: " + escapeHtml(job.ownerEmail) + "</div>";
+      descriptionNode.textContent = job.description;
+
+      if (ownJob) {
+        statusNode.textContent = "You posted this job.";
+        applyBtn.textContent = "View Orders";
+        applyBtn.onclick = function () {
+          window.location.href = "orders.html";
+        };
+      } else if (existingApp) {
+        statusNode.textContent = "You already applied. Current status: " + existingApp.status;
+        applyBtn.disabled = true;
+        applyBtn.textContent = "Applied";
+      } else {
+        statusNode.textContent = "This project is open for applications.";
+        applyBtn.disabled = false;
+        applyBtn.textContent = "Apply Now";
+        applyBtn.onclick = async function () {
+          applyBtn.disabled = true;
+          applyBtn.textContent = "Applying...";
+          try {
+            await api("/jobs/" + encodeURIComponent(job.id) + "/apply", {
+              method: "POST",
+              body: { freelancerEmail: u.email }
+            });
+            statusNode.textContent = "Application submitted successfully.";
+            applyBtn.textContent = "Applied";
+          } catch (err) {
+            statusNode.textContent = err.message;
+            applyBtn.disabled = false;
+            applyBtn.textContent = "Apply Now";
+          }
+        };
+      }
+    } catch (err) {
+      titleNode.textContent = "Unable to load job";
+      descriptionNode.textContent = err.message;
+      applyBtn.style.display = "none";
     }
   }
 
@@ -682,6 +1352,19 @@
     });
   }
 
+  function formatRelativeDate(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "Recently";
+
+    const diff = Date.now() - date.getTime();
+    const minutes = Math.round(diff / 60000);
+    if (minutes < 60) return minutes <= 1 ? "Just now" : minutes + " minutes ago";
+    const hours = Math.round(minutes / 60);
+    if (hours < 24) return hours + " hours ago";
+    const days = Math.round(hours / 24);
+    return days + " days ago";
+  }
+
   function escapeHtml(value) {
     return String(value)
       .replace(/&/g, "&amp;")
@@ -692,13 +1375,18 @@
   }
 
   document.addEventListener("DOMContentLoaded", async function () {
+    bindThemeToggle();
     ensureProtectedRoute();
+    bindSidebarLogo();
     bindLogout();
     markActiveSidebar();
     bindAuthForms();
 
     const user = await getCurrentUser();
     await updateTopbarUser(user);
+    hydrateHomeAuthState(user);
+    applyRoleNavigation(user);
+    applyRoleDashboardShell(user);
     await hydrateProfilePage(user);
     await hydrateSettingsPage(user);
     await bindCreateGig(user);
@@ -707,6 +1395,10 @@
     await renderBrowseJobs(user);
     await renderOrdersPage(user);
     await updateDashboardStats(user);
+    await renderDashboardPanels(user);
+    await renderMessagesPage(user);
+    await renderNotificationsPage(user);
+    await renderJobDetailsPage(user);
     bindHelpForm();
   });
 })();

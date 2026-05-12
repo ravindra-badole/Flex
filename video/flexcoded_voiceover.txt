@@ -1,0 +1,9 @@
+FlexCoded Intro Voiceover
+
+Hi everyone, welcome to FlexCoded.
+In this video, I am showing my first full stack freelancing website project, FlexR.
+This project uses HTML, CSS, JavaScript, Node.js, and MySQL.
+Clients can post jobs, freelancers can apply, users can create gigs, manage orders, send messages, and view notifications.
+The main lesson I learned is simple: real coding improves when we build projects, face errors, and fix them one by one.
+If you are learning web development, follow FlexCoded for project-based tutorials.
+Subscribe, and let us build better projects together.

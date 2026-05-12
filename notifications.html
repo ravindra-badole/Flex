@@ -36,22 +36,11 @@
 
     <div class="profile-card">
       <h2>Recent Updates</h2>
-      <div class="profile-details" style="margin-top: 20px;">
-        <div>
-          <strong>New Order Received</strong>
-          <p>Order #SB-1024 was placed by Asha Enterprises.</p>
-        </div>
-        <div>
-          <strong>Message from Client</strong>
-          <p>Rahul Singh sent you a revision request.</p>
-        </div>
-        <div>
-          <strong>Payment Released</strong>
-          <p>Rs 5,500 has been credited for completed order #SB-1009.</p>
-        </div>
-      </div>
+      <p>Marketplace alerts, proposal changes, and live project updates show up here.</p>
+      <div id="notificationsList" class="profile-details" style="margin-top: 20px;"></div>
       <div class="actions" style="margin-top: 30px;">
-        <button type="button" onclick="window.location.href='dashboard.html'">Mark All as Read</button>
+        <button id="markAllRead" type="button">Mark All as Read</button>
+        <a class="secondary-btn action-link" href="dashboard.html">Back to Dashboard</a>
       </div>
     </div>
   </div>

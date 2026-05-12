@@ -9,6 +9,11 @@ body {
   color: white;
 }
 
+body.theme-light {
+  background: #f6f9fd;
+  color: #102033;
+}
+
 .container {
   width: 100%;
   max-width: 400px;
@@ -21,6 +26,12 @@ body {
   text-align: center;
 }
 
+.theme-light .signup-box {
+  background: #ffffff;
+  border: 1px solid #c9d7e8;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.12);
+}
+
 .signup-box h2 {
   margin-bottom: 20px;
 }
@@ -31,6 +42,41 @@ body {
   margin: 8px 0;
   border: none;
   border-radius: 5px;
+}
+
+.theme-light .signup-box input {
+  background: #f8fbff;
+  border: 1px solid #c9d7e8;
+  color: #102033;
+}
+
+.role-choice {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.role-choice label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 10px;
+  background: #0f172a;
+  cursor: pointer;
+}
+
+.theme-light .role-choice label {
+  background: #f8fbff;
+  border-color: #c9d7e8;
+}
+
+.role-choice input {
+  width: auto;
+  margin: 0;
 }
 
 button {
@@ -82,4 +128,24 @@ button {
   margin-bottom: 10px;
   color: #38bdf8;
   text-decoration: none;
+}
+
+.theme-toggle {
+  background: #0f172a;
+  color: #ffffff;
+}
+
+.theme-light .theme-toggle {
+  background: #ffffff;
+  color: #102033;
+  border: 1px solid #c9d7e8;
+}
+
+.theme-light h2,
+.theme-light p,
+.theme-light label,
+.theme-light .divider,
+.theme-light .login-link,
+.theme-light .terms {
+  color: #102033;
 }

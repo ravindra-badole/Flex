@@ -9,6 +9,11 @@ body {
   height: 100vh;
   color: white;
 }
+
+body.theme-light {
+  background: #f6f9fd;
+  color: #102033;
+}
 .back-home {
   display: block;
   margin-bottom: 15px;
@@ -30,6 +35,12 @@ body {
   text-align: center;
 }
 
+.theme-light .login-box {
+  background: #ffffff;
+  border: 1px solid #c9d7e8;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.12);
+}
+
 /* Heading */
 .login-box h2 {
   margin-bottom: 20px;
@@ -42,6 +53,12 @@ body {
   margin: 10px 0;
   border: none;
   border-radius: 5px;
+}
+
+.theme-light .login-box input {
+  background: #f8fbff;
+  border: 1px solid #c9d7e8;
+  color: #102033;
 }
 
 /* Buttons */
@@ -91,4 +108,23 @@ button {
 .signup-link a {
   color: #38bdf8;
   text-decoration: none;
+}
+
+.theme-toggle {
+  background: #0f172a;
+  color: #ffffff;
+}
+
+.theme-light .theme-toggle {
+  background: #ffffff;
+  color: #102033;
+  border: 1px solid #c9d7e8;
+}
+
+.theme-light h2,
+.theme-light p,
+.theme-light label,
+.theme-light .divider,
+.theme-light .signup-link {
+  color: #102033;
 }

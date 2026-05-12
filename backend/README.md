@@ -1,6 +1,7 @@
 ﻿# SkillBridge Backend (MySQL)
 
-Backend now uses **MySQL** (not `db.json`) and matches your frontend `app.js` fetch flow.
+Backend now prefers **MySQL** and matches your frontend `app.js` fetch flow.
+If MySQL is unavailable or credentials are wrong, the server automatically falls back to local `db.json` storage so the app can still run for development.
 
 ## 1) MySQL setup
 
@@ -40,6 +41,18 @@ npm start
 
 Server: `http://localhost:4000`
 
+You can run either:
+
+```bash
+npm start
+```
+
+or:
+
+```bash
+npm run dev
+```
+
 ## API Endpoints
 
 - `GET /api/health`
@@ -60,4 +73,4 @@ Server: `http://localhost:4000`
 
 - Frontend is already wired to `http://localhost:4000/api`.
 - Keep backend running while testing frontend pages.
-- `db.json` is legacy and no longer used by server.
+- `db.json` is used automatically as a local fallback when MySQL is not available.
