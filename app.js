@@ -6,7 +6,7 @@
     : "http://localhost:4000/api";
   const SESSION_KEY = "sb_session";
   const THEME_KEY = "sb_theme";
-  const REQUEST_TIMEOUT_MS = 12000;
+  const REQUEST_TIMEOUT_MS = 60000;
 
   const path = (window.location.pathname.split("/").pop() || "index.html").toLowerCase();
   const publicPages = new Set(["index.html", "login.html", "signup.html", "help.html"]);
@@ -82,7 +82,7 @@
   function ensureProtectedRoute() {
     if (publicPages.has(path)) return;
     const session = getSession();
-    if (!session || !session.email) {
+    if (!session || !session.email || !session.token) {
       const currentTarget = path + window.location.search;
       window.location.href = "login.html?next=" + encodeURIComponent(currentTarget);
     }
@@ -93,13 +93,16 @@
     const timer = setTimeout(function () {
       controller.abort();
     }, REQUEST_TIMEOUT_MS);
+    const session = getSession();
+    const headers = { "Content-Type": "application/json" };
+    if (session && session.token) {
+      headers.Authorization = "Bearer " + session.token;
+    }
 
     try {
       const res = await fetch(API_BASE + pathname, {
         method: (options && options.method) || "GET",
-        headers: {
-          "Content-Type": "application/json"
-        },
+        headers: headers,
         body: options && options.body ? JSON.stringify(options.body) : undefined,
         signal: controller.signal
       });
@@ -126,6 +129,76 @@
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  async function downloadFile(pathname, fileName) {
+    const session = getSession();
+    if (!session || !session.token) {
+      throw new Error("Login required to download files.");
+    }
+    const target = pathname && pathname.indexOf("/api/") === 0
+      ? pathname
+      : API_BASE + pathname;
+
+    const res = await fetch(target, {
+      headers: {
+        Authorization: "Bearer " + session.token
+      }
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(function () {
+        return { message: "File download failed" };
+      });
+      throw new Error(data.message || "File download failed");
+    }
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName || "attachment";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function readFileAsDataUrl(file) {
+    return new Promise(function (resolve, reject) {
+      const reader = new FileReader();
+      reader.onload = function (event) {
+        const result = event.target && event.target.result;
+        if (typeof result === "string") resolve(result);
+        else reject(new Error("Could not read selected file."));
+      };
+      reader.onerror = function () {
+        reject(new Error("Could not read selected file."));
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function makeAttachment(file) {
+    if (!file) return null;
+    const maxBytes = 25 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      throw new Error("File must be 25 MB or smaller.");
+    }
+
+    return {
+      fileName: file.name,
+      fileType: file.type || "application/octet-stream",
+      fileSize: file.size,
+      dataUrl: await readFileAsDataUrl(file)
+    };
+  }
+
+  function formatFileSize(bytes) {
+    const size = Number(bytes || 0);
+    if (size >= 1024 * 1024) return (size / (1024 * 1024)).toFixed(1) + " MB";
+    if (size >= 1024) return Math.round(size / 1024) + " KB";
+    return size + " B";
   }
 
   function setFormLoading(form, isLoading, loadingText) {
@@ -323,7 +396,7 @@
             body: { firstName: firstName, lastName: lastName, email: email, password: password, role: role }
           });
 
-          setSession({ email: res.user.email, role: getRole(res.user), loginAt: new Date().toISOString() });
+          setSession({ email: res.user.email, role: getRole(res.user), token: res.token, loginAt: new Date().toISOString() });
           currentUserCache = res.user;
           if (typeof window.refreshUserDp === "function") window.refreshUserDp();
           showFormMessage(form, getRole(res.user) + " account created. Opening dashboard...", false);
@@ -360,7 +433,7 @@
             body: { email: email, password: password }
           });
 
-          setSession({ email: res.user.email, role: getRole(res.user), loginAt: new Date().toISOString() });
+          setSession({ email: res.user.email, role: getRole(res.user), token: res.token, loginAt: new Date().toISOString() });
           currentUserCache = res.user;
           if (typeof window.refreshUserDp === "function") window.refreshUserDp();
           showFormMessage(form, getRole(res.user) + " login successful. Opening dashboard...", false);
@@ -504,7 +577,8 @@
               }
             });
 
-            setSession({ email: res.user.email, role: getRole(res.user), loginAt: new Date().toISOString() });
+            const session = getSession() || {};
+            setSession({ email: res.user.email, role: getRole(res.user), token: session.token, loginAt: new Date().toISOString() });
             currentUserCache = res.user;
             if (h2) h2.textContent = (res.user.firstName + " " + res.user.lastName).trim();
             if (intro) intro.textContent = getRole(res.user) + " | SkillBridge User";
@@ -583,7 +657,8 @@
           }
         });
 
-        setSession({ email: res.user.email, loginAt: new Date().toISOString() });
+        const session = getSession() || {};
+        setSession({ email: res.user.email, role: getRole(res.user), token: session.token, loginAt: new Date().toISOString() });
         currentUserCache = res.user;
         showFormMessage(form, "Settings saved successfully.", false);
         setTimeout(function () {
@@ -621,7 +696,6 @@
         await api("/gigs", {
           method: "POST",
           body: {
-            ownerEmail: u.email,
             title: title,
             description: description,
             price: price,
@@ -696,7 +770,6 @@
         await api("/jobs", {
           method: "POST",
           body: {
-            ownerEmail: u.email,
             title: title,
             description: description,
             category: category,
@@ -731,7 +804,7 @@
 
       const [jobsRes, ordersRes] = await Promise.all([
         api(endpoint),
-        api("/orders?email=" + encodeURIComponent(u.email))
+        api("/orders")
       ]);
 
       const jobs = jobsRes.jobs || [];
@@ -776,8 +849,7 @@
             btn.disabled = true;
             btn.textContent = "Applying...";
             await api("/jobs/" + encodeURIComponent(jobId) + "/apply", {
-              method: "POST",
-              body: { freelancerEmail: u.email }
+              method: "POST"
             });
             renderBrowseJobs(u);
           } catch (err) {
@@ -799,7 +871,7 @@
     if (!u || !container) return;
 
     try {
-      const res = await api("/orders?email=" + encodeURIComponent(u.email));
+      const res = await api("/orders");
       const orders = res.orders || {};
       const postedJobs = orders.postedJobs || [];
       const incoming = orders.incomingApplications || [];
@@ -889,7 +961,7 @@
       const [gigsRes, jobsRes, ordersRes] = await Promise.all([
         api("/gigs?ownerEmail=" + encodeURIComponent(u.email)),
         api("/jobs?ownerEmail=" + encodeURIComponent(u.email)),
-        api("/orders?email=" + encodeURIComponent(u.email))
+        api("/orders")
       ]);
 
       const gigs = gigsRes.gigs || [];
@@ -943,7 +1015,7 @@
       const [gigsRes, jobsRes, ordersRes] = await Promise.all([
         api("/gigs?ownerEmail=" + encodeURIComponent(u.email)),
         api("/jobs"),
-        api("/orders?email=" + encodeURIComponent(u.email))
+        api("/orders")
       ]);
 
       const gigs = gigsRes.gigs || [];
@@ -1066,8 +1138,8 @@
 
     try {
       const [ordersRes, messagesRes] = await Promise.all([
-        api("/orders?email=" + encodeURIComponent(u.email)),
-        api("/messages?email=" + encodeURIComponent(u.email))
+        api("/orders"),
+        api("/messages")
       ]);
 
       const orders = ordersRes.orders || {};
@@ -1093,7 +1165,7 @@
 
       if (!chats.length) {
         container.innerHTML = "<div class=\"message-item\"><h4>Chat locked</h4><p>Project chat unlocks after a client accepts a freelancer application.</p><span>Accept an application first, then both sides can talk here.</span></div>";
-        composer.querySelectorAll("select, textarea, button").forEach(function (node) {
+        composer.querySelectorAll("select, textarea, input, button").forEach(function (node) {
           node.disabled = true;
         });
       } else {
@@ -1110,9 +1182,16 @@
           const messageHtml = chatMessages.length
             ? chatMessages.map(function (message) {
                 const mine = message.senderEmail === u.email;
+                const attachment = message.attachment;
+                const attachmentHtml = attachment
+                  ? "<button type=\"button\" class=\"file-download\" data-file-url=\"" + escapeHtml(attachment.downloadUrl) + "\" data-file-name=\"" + escapeHtml(attachment.fileName) + "\">" +
+                      "Download " + escapeHtml(attachment.fileName) + " (" + formatFileSize(attachment.fileSize) + ")" +
+                    "</button>"
+                  : "";
                 return "<div class=\"chat-bubble " + (mine ? "mine" : "theirs") + "\">" +
                   "<strong>" + (mine ? "You" : escapeHtml(chat.counterpart)) + "</strong>" +
-                  "<p>" + escapeHtml(message.body) + "</p>" +
+                  (message.body ? "<p>" + escapeHtml(message.body) + "</p>" : "") +
+                  attachmentHtml +
                   "<span>" + formatRelativeDate(message.createdAt) + "</span>" +
                 "</div>";
               }).join("")
@@ -1125,11 +1204,28 @@
             "<div class=\"chat-thread\">" + messageHtml + "</div>" +
           "</div>";
         }).join("");
+
+        container.querySelectorAll("button[data-file-url]").forEach(function (btn) {
+          btn.addEventListener("click", async function () {
+            const oldText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = "Downloading...";
+            try {
+              await downloadFile(btn.getAttribute("data-file-url"), btn.getAttribute("data-file-name"));
+            } catch (err) {
+              alert(err.message);
+            } finally {
+              btn.disabled = false;
+              btn.textContent = oldText;
+            }
+          });
+        });
       }
 
       const chatSelect = composer.querySelector('select[name="application_id"]');
       if (chatSelect && chats.length) {
-        composer.querySelectorAll("select, textarea, button").forEach(function (node) {
+        composer._skillBridgeChats = chats;
+        composer.querySelectorAll("select, textarea, input, button").forEach(function (node) {
           node.disabled = false;
         });
         chatSelect.disabled = false;
@@ -1150,26 +1246,30 @@
           const data = new FormData(composer);
           const applicationId = String(data.get("application_id") || "").trim();
           const message = String(data.get("message") || "").trim();
-          const chat = chats.find(function (item) { return item.id === applicationId; });
+          const fileInput = composer.querySelector('input[name="attachment"]');
+          const file = fileInput && fileInput.files ? fileInput.files[0] : null;
+          const currentChats = composer._skillBridgeChats || chats;
+          const chat = currentChats.find(function (item) { return item.id === applicationId; });
 
-          if (!chat || !message) {
-            showFormMessage(composer, "Choose an accepted project and write a message.", true);
+          if (!chat || (!message && !file)) {
+            showFormMessage(composer, "Choose an accepted project and write a message or attach a file.", true);
             return;
           }
 
           setFormLoading(composer, true, "Sending...");
           try {
+            const attachment = await makeAttachment(file);
             await api("/messages", {
               method: "POST",
               body: {
-                senderEmail: u.email,
                 recipientEmail: chat.counterpart,
                 applicationId: chat.id,
                 subject: chat.title,
-                body: message
+                body: message,
+                attachment: attachment
               }
             });
-            showFormMessage(composer, "Message sent successfully.", false);
+            showFormMessage(composer, attachment ? "File sent successfully." : "Message sent successfully.", false);
             composer.reset();
             renderMessagesPage(u);
           } catch (err) {
@@ -1194,7 +1294,7 @@
     const storageKey = "sb_notifications_seen_" + u.email;
 
     try {
-      const res = await api("/orders?email=" + encodeURIComponent(u.email));
+      const res = await api("/orders");
       const orders = res.orders || {};
       const incoming = orders.incomingApplications || [];
       const myApps = orders.myApplications || [];
@@ -1268,7 +1368,7 @@
     try {
       const [jobsRes, ordersRes] = await Promise.all([
         api("/jobs"),
-        api("/orders?email=" + encodeURIComponent(u.email))
+        api("/orders")
       ]);
 
       const jobs = jobsRes.jobs || [];
@@ -1314,8 +1414,7 @@
           applyBtn.textContent = "Applying...";
           try {
             await api("/jobs/" + encodeURIComponent(job.id) + "/apply", {
-              method: "POST",
-              body: { freelancerEmail: u.email }
+              method: "POST"
             });
             statusNode.textContent = "Application submitted successfully.";
             applyBtn.textContent = "Applied";

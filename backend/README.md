@@ -29,6 +29,7 @@ copy .env.example .env
 ```
 
 Then edit `.env` with your MySQL password.
+Also set `AUTH_SECRET` to a long random value before using real accounts.
 
 `server.js` auto-loads `.env` (no extra package needed).
 
@@ -73,4 +74,13 @@ npm run dev
 
 - Frontend is already wired to `http://localhost:4000/api`.
 - Keep backend running while testing frontend pages.
-- `db.json` is used automatically as a local fallback when MySQL is not available.
+- `db.json` is used as a local fallback when MySQL is not available in development. Set `ALLOW_JSON_FALLBACK=false` to disable it.
+- Protected APIs require the bearer token returned by login/signup.
+- Passwords are stored with salted PBKDF2 hashes; old SHA-256 hashes can still log in for compatibility.
+
+## Checks
+
+```bash
+npm run check
+npm test
+```
