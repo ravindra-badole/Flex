@@ -65,12 +65,39 @@ body {
 }
 
 .sidebar a {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   width: 100%;
   padding: 10px 12px;
   color: var(--muted);
   text-decoration: none;
   border-radius: 10px;
+}
+
+.nav-badge,
+.thread-unread {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.thread-unread {
+  width: fit-content;
+  margin: 0 0 10px;
+  background: rgba(239, 68, 68, 0.18);
+  border: 1px solid rgba(239, 68, 68, 0.42);
+  color: #fecaca;
 }
 
 .sidebar li:hover {
@@ -657,6 +684,12 @@ label {
 .theme-light .file-field input {
   background: #ffffff;
   color: #102033;
+}
+
+.theme-light .thread-unread {
+  background: #fef2f2;
+  color: #b91c1c;
+  border-color: #fecaca;
 }
 
 .theme-light .secondary-btn,

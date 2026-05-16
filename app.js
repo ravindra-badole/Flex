@@ -6,6 +6,7 @@
     : "http://localhost:4000/api";
   const SESSION_KEY = "sb_session";
   const THEME_KEY = "sb_theme";
+  const MESSAGE_READ_KEY_PREFIX = "sb_message_read:";
   const REQUEST_TIMEOUT_MS = 60000;
 
   const path = (window.location.pathname.split("/").pop() || "index.html").toLowerCase();
@@ -199,6 +200,94 @@
     if (size >= 1024 * 1024) return (size / (1024 * 1024)).toFixed(1) + " MB";
     if (size >= 1024) return Math.round(size / 1024) + " KB";
     return size + " B";
+  }
+
+  function getMessageReadKey(user) {
+    return MESSAGE_READ_KEY_PREFIX + normalizeUserEmail(user && user.email);
+  }
+
+  function normalizeUserEmail(value) {
+    return String(value || "").trim().toLowerCase();
+  }
+
+  function getMessageThreadId(message) {
+    if (message && message.applicationId) return message.applicationId;
+    return [
+      normalizeUserEmail(message && message.senderEmail),
+      normalizeUserEmail(message && message.recipientEmail),
+      String(message && message.subject || "Project update")
+    ].sort().join("|");
+  }
+
+  function getMessageReadState(user) {
+    try {
+      return JSON.parse(localStorage.getItem(getMessageReadKey(user)) || "{}");
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function setMessageReadState(user, state) {
+    localStorage.setItem(getMessageReadKey(user), JSON.stringify(state || {}));
+  }
+
+  function getUnreadByThread(messages, user) {
+    const readState = getMessageReadState(user);
+    const unreadByThread = {};
+    (messages || []).forEach(function (message) {
+      if (normalizeUserEmail(message.recipientEmail) !== normalizeUserEmail(user && user.email)) return;
+      const threadId = getMessageThreadId(message);
+      const messageTime = new Date(message.createdAt).getTime();
+      const readTime = Number(readState[threadId] || 0);
+      if (messageTime && messageTime > readTime) {
+        unreadByThread[threadId] = (unreadByThread[threadId] || 0) + 1;
+      }
+    });
+    return unreadByThread;
+  }
+
+  function countUnreadMessages(unreadByThread) {
+    return Object.keys(unreadByThread || {}).reduce(function (sum, key) {
+      return sum + Number(unreadByThread[key] || 0);
+    }, 0);
+  }
+
+  function renderMessageUnreadBadge(count) {
+    const link = document.querySelector('.sidebar a[href="messages.html"]');
+    if (!link) return;
+    const existing = link.querySelector(".nav-badge");
+    if (existing) existing.remove();
+    if (!count) return;
+
+    const badge = document.createElement("span");
+    badge.className = "nav-badge";
+    badge.textContent = count > 99 ? "99+" : String(count);
+    link.appendChild(badge);
+  }
+
+  async function updateMessageUnreadBadge(user, providedMessages) {
+    if (!user || path === "messages.html") return;
+    try {
+      const messages = providedMessages || (await api("/messages")).messages || [];
+      renderMessageUnreadBadge(countUnreadMessages(getUnreadByThread(messages, user)));
+    } catch (_) {
+      renderMessageUnreadBadge(0);
+    }
+  }
+
+  function markVisibleThreadsRead(messages, user, chats) {
+    const state = getMessageReadState(user);
+    const visibleThreads = new Set((chats || []).map(function (chat) { return chat.id; }));
+    (messages || []).forEach(function (message) {
+      const threadId = getMessageThreadId(message);
+      if (!visibleThreads.has(threadId)) return;
+      const messageTime = new Date(message.createdAt).getTime();
+      if (messageTime && messageTime > Number(state[threadId] || 0)) {
+        state[threadId] = messageTime;
+      }
+    });
+    setMessageReadState(user, state);
+    renderMessageUnreadBadge(0);
   }
 
   function setFormLoading(form, isLoading, loadingText) {
@@ -1146,6 +1235,7 @@
       const incoming = orders.incomingApplications || [];
       const myApps = orders.myApplications || [];
       const messages = messagesRes.messages || [];
+      const unreadByThread = getUnreadByThread(messages, u);
 
       const chats = [];
       incoming.concat(myApps).forEach(function (item) {
@@ -1170,11 +1260,9 @@
         });
       } else {
         container.innerHTML = chats.map(function (chat) {
+          const unreadCount = Number(unreadByThread[chat.id] || 0);
           const chatMessages = messages.filter(function (message) {
-            const sameApp = message.applicationId && message.applicationId === chat.id;
-            const samePeople = (message.senderEmail === u.email && message.recipientEmail === chat.counterpart)
-              || (message.senderEmail === chat.counterpart && message.recipientEmail === u.email);
-            return sameApp || (samePeople && message.subject === chat.title);
+            return message.applicationId === chat.id;
           }).sort(function (a, b) {
             return new Date(a.createdAt) - new Date(b.createdAt);
           });
@@ -1199,8 +1287,12 @@
 
           return "<div class=\"message-item\">" +
             "<div class=\"card-badge\">" + escapeHtml(chat.label) + "</div>" +
+            (unreadCount
+              ? "<div class=\"thread-unread\">" + unreadCount + " unread</div>"
+              : "") +
             "<h4>" + escapeHtml(chat.title) + "</h4>" +
             "<p>Chat with " + escapeHtml(chat.counterpart) + "</p>" +
+            "<p class=\"muted-line\">Thread ID: " + escapeHtml(chat.id) + "</p>" +
             "<div class=\"chat-thread\">" + messageHtml + "</div>" +
           "</div>";
         }).join("");
@@ -1221,6 +1313,8 @@
           });
         });
       }
+
+      markVisibleThreadsRead(messages, u, chats);
 
       const chatSelect = composer.querySelector('select[name="application_id"]');
       if (chatSelect && chats.length) {
@@ -1500,6 +1594,12 @@
     hydrateHomeAuthState(user);
     applyRoleNavigation(user);
     applyRoleDashboardShell(user);
+    await updateMessageUnreadBadge(user);
+    if (user && path !== "messages.html") {
+      setInterval(function () {
+        updateMessageUnreadBadge(user);
+      }, 30000);
+    }
     await hydrateProfilePage(user);
     await hydrateSettingsPage(user);
     await bindCreateGig(user);

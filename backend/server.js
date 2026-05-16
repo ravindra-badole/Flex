@@ -661,8 +661,12 @@ function createJsonStore() {
         return { type: "missing_user" };
       }
 
+      if (!applicationId) {
+        return { type: "missing_application" };
+      }
+
       const acceptedApp = db.applications.find((item) => {
-        const sameApplication = applicationId ? item.id === applicationId : true;
+        const sameApplication = item.id === applicationId;
         const accepted = item.status === "Accepted";
         const participants = item.clientEmail === senderEmail && item.freelancerEmail === recipientEmail
           || item.clientEmail === recipientEmail && item.freelancerEmail === senderEmail;
@@ -1163,15 +1167,16 @@ async function createMySqlStore() {
         return { type: "missing_user" };
       }
 
+      if (!applicationId) {
+        return { type: "missing_application" };
+      }
+
       let acceptedSql = `
         SELECT * FROM applications
         WHERE status = 'Accepted'
-          AND ((client_email = ? AND freelancer_email = ?) OR (client_email = ? AND freelancer_email = ?))`;
-      const acceptedParams = [senderEmail, recipientEmail, recipientEmail, senderEmail];
-      if (applicationId) {
-        acceptedSql += " AND id = ?";
-        acceptedParams.push(applicationId);
-      }
+          AND ((client_email = ? AND freelancer_email = ?) OR (client_email = ? AND freelancer_email = ?))
+          AND id = ?`;
+      const acceptedParams = [senderEmail, recipientEmail, recipientEmail, senderEmail, applicationId];
       acceptedSql += " LIMIT 1";
 
       const [acceptedRows] = await pool.execute(acceptedSql, acceptedParams);
@@ -1566,6 +1571,9 @@ async function start() {
 
         if (message.type === "missing_user") {
           return json(res, 404, { ok: false, message: "sender or recipient not found" });
+        }
+        if (message.type === "missing_application") {
+          return badRequest(res, "accepted project thread is required");
         }
         if (message.type === "locked") {
           return json(res, 403, { ok: false, message: "chat unlocks after the client accepts the application" });
