@@ -3,7 +3,7 @@
 
   const API_BASE = window.location.origin === "http://localhost:4000"
     ? "/api"
-    : "http://https://flex-backendr.onrender.com/api";
+    : "https://flex-backendr.onrender.com/api";
   const SESSION_KEY = "sb_session";
   const THEME_KEY = "sb_theme";
   const MESSAGE_READ_KEY_PREFIX = "sb_message_read:";
