@@ -174,6 +174,13 @@ function sanitizeUser(row) {
   };
 }
 
+function getUserDisplayName(user) {
+  if (!user) return "";
+  const firstName = user.first_name || user.firstName || "";
+  const lastName = user.last_name || user.lastName || "";
+  return `${firstName} ${lastName}`.trim() || user.email || "";
+}
+
 function mapGig(row) {
   return {
     id: row.id,
@@ -187,6 +194,7 @@ function mapGig(row) {
 }
 
 function mapJob(row) {
+  const teamMode = row.team_mode || row.teamMode || "single";
   return {
     id: row.id,
     ownerEmail: row.owner_email || row.ownerEmail,
@@ -195,6 +203,8 @@ function mapJob(row) {
     category: row.category,
     budget: Number(row.budget),
     deadlineDays: Number(row.deadline_days || row.deadlineDays),
+    teamMode: teamMode === "multiple" ? "multiple" : "single",
+    maxFreelancers: teamMode === "multiple" ? 5 : 1,
     status: row.status,
     createdAt: row.created_at || row.createdAt
   };
@@ -205,7 +215,9 @@ function mapApplication(row) {
     id: row.id,
     jobId: row.job_id || row.jobId,
     clientEmail: row.client_email || row.clientEmail,
+    clientName: row.client_name || row.clientName || "",
     freelancerEmail: row.freelancer_email || row.freelancerEmail,
+    freelancerName: row.freelancer_name || row.freelancerName || "",
     status: row.status,
     appliedAt: row.applied_at || row.appliedAt
   };
@@ -520,7 +532,7 @@ function createJsonStore() {
         .map(mapJob);
     },
 
-    async createJob({ ownerEmail, title, description, category, budget, deadlineDays }) {
+    async createJob({ ownerEmail, title, description, category, budget, deadlineDays, teamMode }) {
       db = readJsonDb();
       const owner = db.users.find((item) => item.email === ownerEmail);
       if (!owner) return null;
@@ -533,6 +545,7 @@ function createJsonStore() {
         category,
         budget: Number(budget),
         deadlineDays: Number(deadlineDays),
+        teamMode: teamMode === "multiple" ? "multiple" : "single",
         status: "Open",
         createdAt: nowIso()
       };
@@ -575,6 +588,15 @@ function createJsonStore() {
     async getOrders(email) {
       db = readJsonDb();
       const jobsById = new Map(db.jobs.map((job) => [job.id, job]));
+      const usersByEmail = new Map(db.users.map((user) => [user.email, user]));
+      const mapApplicationWithJob = (app) => ({
+        ...mapApplication({
+          ...app,
+          clientName: getUserDisplayName(usersByEmail.get(app.clientEmail)),
+          freelancerName: getUserDisplayName(usersByEmail.get(app.freelancerEmail))
+        }),
+        job: jobsById.has(app.jobId) ? mapJob(jobsById.get(app.jobId)) : null
+      });
       const postedJobs = db.jobs
         .filter((job) => job.ownerEmail === email)
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
@@ -583,20 +605,29 @@ function createJsonStore() {
       const incomingApplications = db.applications
         .filter((app) => app.clientEmail === email)
         .sort((a, b) => new Date(b.appliedAt) - new Date(a.appliedAt))
-        .map((app) => ({
-          ...mapApplication(app),
-          job: jobsById.has(app.jobId) ? mapJob(jobsById.get(app.jobId)) : null
-        }));
+        .map(mapApplicationWithJob);
 
       const myApplications = db.applications
         .filter((app) => app.freelancerEmail === email)
         .sort((a, b) => new Date(b.appliedAt) - new Date(a.appliedAt))
-        .map((app) => ({
-          ...mapApplication(app),
-          job: jobsById.has(app.jobId) ? mapJob(jobsById.get(app.jobId)) : null
-        }));
+        .map(mapApplicationWithJob);
 
-      return { postedJobs, incomingApplications, myApplications };
+      const visibleTeamJobIds = new Set(
+        db.applications
+          .filter((app) => {
+            const job = jobsById.get(app.jobId);
+            if (!job || job.teamMode !== "multiple" || app.status !== "Accepted") return false;
+            return app.clientEmail === email || app.freelancerEmail === email;
+          })
+          .map((app) => app.jobId)
+      );
+
+      const teamApplications = db.applications
+        .filter((app) => visibleTeamJobIds.has(app.jobId) && app.status === "Accepted")
+        .sort((a, b) => new Date(a.appliedAt) - new Date(b.appliedAt))
+        .map(mapApplicationWithJob);
+
+      return { postedJobs, incomingApplications, myApplications, teamApplications };
     },
 
     async updateApplicationStatus(appId, status, actorEmail) {
@@ -605,6 +636,18 @@ function createJsonStore() {
       if (index === -1) return null;
       if (db.applications[index].clientEmail !== actorEmail) {
         return { type: "forbidden" };
+      }
+
+      if (status === "Accepted") {
+        const application = db.applications[index];
+        const job = db.jobs.find((item) => item.id === application.jobId);
+        const limit = job && job.teamMode === "multiple" ? 5 : 1;
+        const acceptedCount = db.applications.filter((item) => {
+          return item.jobId === application.jobId && item.status === "Accepted" && item.id !== appId;
+        }).length;
+        if (acceptedCount >= limit) {
+          return { type: "limit_reached", limit };
+        }
       }
 
       db.applications[index] = {
@@ -631,8 +674,18 @@ function createJsonStore() {
 
     async listMessages(email) {
       db = readJsonDb();
+      const jobsById = new Map(db.jobs.map((job) => [job.id, job]));
+      const visibleGroupJobIds = new Set(
+        db.applications
+          .filter((app) => {
+            const job = jobsById.get(app.jobId);
+            if (!job || job.teamMode !== "multiple" || app.status !== "Accepted") return false;
+            return app.clientEmail === email || app.freelancerEmail === email;
+          })
+          .map((app) => app.jobId)
+      );
       return db.messages
-        .filter((item) => item.senderEmail === email || item.recipientEmail === email)
+        .filter((item) => item.senderEmail === email || item.recipientEmail === email || visibleGroupJobIds.has(item.jobId))
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
         .map(mapMessage);
     },
@@ -641,7 +694,13 @@ function createJsonStore() {
       db = readJsonDb();
       const message = db.messages.find((item) => item.id === messageId);
       if (!message) return null;
-      if (message.senderEmail !== email && message.recipientEmail !== email) {
+      const job = db.jobs.find((item) => item.id === message.jobId);
+      const groupMember = job && job.teamMode === "multiple" && db.applications.some((app) => {
+        return app.jobId === message.jobId
+          && app.status === "Accepted"
+          && (app.clientEmail === email || app.freelancerEmail === email);
+      });
+      if (message.senderEmail !== email && message.recipientEmail !== email && !groupMember) {
         return { type: "forbidden" };
       }
       if (!message.fileData) return { type: "missing_file" };
@@ -666,15 +725,18 @@ function createJsonStore() {
         return { type: "missing_application" };
       }
 
-      const acceptedApp = db.applications.find((item) => {
-        const sameApplication = item.id === applicationId;
-        const accepted = item.status === "Accepted";
-        const participants = item.clientEmail === senderEmail && item.freelancerEmail === recipientEmail
-          || item.clientEmail === recipientEmail && item.freelancerEmail === senderEmail;
-        return sameApplication && accepted && participants;
-      });
+      const acceptedApp = db.applications.find((item) => item.id === applicationId && item.status === "Accepted");
 
       if (!acceptedApp) {
+        return { type: "locked" };
+      }
+
+      const job = db.jobs.find((item) => item.id === acceptedApp.jobId);
+      const acceptedForJob = db.applications.filter((item) => item.jobId === acceptedApp.jobId && item.status === "Accepted");
+      const allowedParticipants = job && job.teamMode === "multiple"
+        ? [acceptedApp.clientEmail].concat(acceptedForJob.map((item) => item.freelancerEmail))
+        : [acceptedApp.clientEmail, acceptedApp.freelancerEmail];
+      if (!allowedParticipants.includes(senderEmail) || !allowedParticipants.includes(recipientEmail)) {
         return { type: "locked" };
       }
 
@@ -764,6 +826,7 @@ async function createMySqlStore() {
       category VARCHAR(150) NOT NULL,
       budget DECIMAL(12,2) NOT NULL,
       deadline_days INT NOT NULL,
+      team_mode VARCHAR(20) NOT NULL DEFAULT 'single',
       status VARCHAR(40) NOT NULL DEFAULT 'Open',
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       INDEX idx_jobs_owner_email (owner_email),
@@ -847,6 +910,7 @@ async function createMySqlStore() {
   await pool.query("ALTER TABLE messages ADD COLUMN file_type VARCHAR(120) NULL").catch(() => {});
   await pool.query("ALTER TABLE messages ADD COLUMN file_size INT NOT NULL DEFAULT 0").catch(() => {});
   await pool.query("ALTER TABLE messages ADD COLUMN file_data LONGTEXT NULL").catch(() => {});
+  await pool.query("ALTER TABLE jobs ADD COLUMN team_mode VARCHAR(20) NOT NULL DEFAULT 'single'").catch(() => {});
 
   return {
     kind: "mysql",
@@ -974,15 +1038,15 @@ async function createMySqlStore() {
       return rows.map(mapJob);
     },
 
-    async createJob({ ownerEmail, title, description, category, budget, deadlineDays }) {
+    async createJob({ ownerEmail, title, description, category, budget, deadlineDays, teamMode }) {
       const [ownerRows] = await pool.execute("SELECT id FROM users WHERE email = ? LIMIT 1", [ownerEmail]);
       if (!ownerRows.length) return null;
 
       const jobId = makeId("j");
       await pool.execute(
-        `INSERT INTO jobs (id, owner_email, title, description, category, budget, deadline_days, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'Open')`,
-        [jobId, ownerEmail, title, description, category, budget, deadlineDays]
+        `INSERT INTO jobs (id, owner_email, title, description, category, budget, deadline_days, team_mode, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Open')`,
+        [jobId, ownerEmail, title, description, category, budget, deadlineDays, teamMode === "multiple" ? "multiple" : "single"]
       );
 
       const [rows] = await pool.execute("SELECT * FROM jobs WHERE id = ? LIMIT 1", [jobId]);
@@ -1028,11 +1092,16 @@ async function createMySqlStore() {
       const [incomingRows] = await pool.execute(
         `SELECT
            a.id, a.job_id, a.client_email, a.freelancer_email, a.status, a.applied_at,
+           CONCAT(COALESCE(c.first_name, ''), ' ', COALESCE(c.last_name, '')) AS client_name,
+           CONCAT(COALESCE(f.first_name, ''), ' ', COALESCE(f.last_name, '')) AS freelancer_name,
            j.id AS j_id, j.owner_email AS j_owner_email, j.title AS j_title,
            j.description AS j_description, j.category AS j_category, j.budget AS j_budget,
-           j.deadline_days AS j_deadline_days, j.status AS j_status, j.created_at AS j_created_at
+           j.deadline_days AS j_deadline_days, j.team_mode AS j_team_mode,
+           j.status AS j_status, j.created_at AS j_created_at
          FROM applications a
          LEFT JOIN jobs j ON j.id = a.job_id
+         LEFT JOIN users c ON c.email = a.client_email
+         LEFT JOIN users f ON f.email = a.freelancer_email
          WHERE a.client_email = ?
          ORDER BY a.applied_at DESC`,
         [email]
@@ -1041,22 +1110,29 @@ async function createMySqlStore() {
       const [myRows] = await pool.execute(
         `SELECT
            a.id, a.job_id, a.client_email, a.freelancer_email, a.status, a.applied_at,
+           CONCAT(COALESCE(c.first_name, ''), ' ', COALESCE(c.last_name, '')) AS client_name,
+           CONCAT(COALESCE(f.first_name, ''), ' ', COALESCE(f.last_name, '')) AS freelancer_name,
            j.id AS j_id, j.owner_email AS j_owner_email, j.title AS j_title,
            j.description AS j_description, j.category AS j_category, j.budget AS j_budget,
-           j.deadline_days AS j_deadline_days, j.status AS j_status, j.created_at AS j_created_at
+           j.deadline_days AS j_deadline_days, j.team_mode AS j_team_mode,
+           j.status AS j_status, j.created_at AS j_created_at
          FROM applications a
          LEFT JOIN jobs j ON j.id = a.job_id
+         LEFT JOIN users c ON c.email = a.client_email
+         LEFT JOIN users f ON f.email = a.freelancer_email
          WHERE a.freelancer_email = ?
          ORDER BY a.applied_at DESC`,
         [email]
       );
 
       const postedJobs = postedJobRows.map(mapJob);
-      const incomingApplications = incomingRows.map((row) => ({
+      const mapApplicationRowWithJob = (row) => ({
         id: row.id,
         jobId: row.job_id,
         clientEmail: row.client_email,
+        clientName: String(row.client_name || "").trim() || row.client_email,
         freelancerEmail: row.freelancer_email,
+        freelancerName: String(row.freelancer_name || "").trim() || row.freelancer_email,
         status: row.status,
         appliedAt: row.applied_at,
         job: row.j_id
@@ -1068,42 +1144,63 @@ async function createMySqlStore() {
               category: row.j_category,
               budget: Number(row.j_budget),
               deadlineDays: row.j_deadline_days,
+              teamMode: row.j_team_mode === "multiple" ? "multiple" : "single",
+              maxFreelancers: row.j_team_mode === "multiple" ? 5 : 1,
               status: row.j_status,
               createdAt: row.j_created_at
             }
           : null
-      }));
+      });
 
-      const myApplications = myRows.map((row) => ({
-        id: row.id,
-        jobId: row.job_id,
-        clientEmail: row.client_email,
-        freelancerEmail: row.freelancer_email,
-        status: row.status,
-        appliedAt: row.applied_at,
-        job: row.j_id
-          ? {
-              id: row.j_id,
-              ownerEmail: row.j_owner_email,
-              title: row.j_title,
-              description: row.j_description,
-              category: row.j_category,
-              budget: Number(row.j_budget),
-              deadlineDays: row.j_deadline_days,
-              status: row.j_status,
-              createdAt: row.j_created_at
-            }
-          : null
-      }));
+      const incomingApplications = incomingRows.map(mapApplicationRowWithJob);
+      const myApplications = myRows.map(mapApplicationRowWithJob);
 
-      return { postedJobs, incomingApplications, myApplications };
+      const [teamRows] = await pool.execute(
+        `SELECT
+           a.id, a.job_id, a.client_email, a.freelancer_email, a.status, a.applied_at,
+           CONCAT(COALESCE(c.first_name, ''), ' ', COALESCE(c.last_name, '')) AS client_name,
+           CONCAT(COALESCE(f.first_name, ''), ' ', COALESCE(f.last_name, '')) AS freelancer_name,
+           j.id AS j_id, j.owner_email AS j_owner_email, j.title AS j_title,
+           j.description AS j_description, j.category AS j_category, j.budget AS j_budget,
+           j.deadline_days AS j_deadline_days, j.team_mode AS j_team_mode,
+           j.status AS j_status, j.created_at AS j_created_at
+         FROM applications mine
+         INNER JOIN jobs j ON j.id = mine.job_id AND j.team_mode = 'multiple'
+         INNER JOIN applications a ON a.job_id = mine.job_id AND a.status = 'Accepted'
+         LEFT JOIN users c ON c.email = a.client_email
+         LEFT JOIN users f ON f.email = a.freelancer_email
+         WHERE mine.status = 'Accepted'
+           AND (mine.client_email = ? OR mine.freelancer_email = ?)
+         ORDER BY a.applied_at ASC`,
+        [email, email]
+      );
+      const teamApplications = teamRows.map(mapApplicationRowWithJob);
+
+      return { postedJobs, incomingApplications, myApplications, teamApplications };
     },
 
     async updateApplicationStatus(appId, status, actorEmail) {
-      const [rows] = await pool.execute("SELECT id, client_email FROM applications WHERE id = ? LIMIT 1", [appId]);
+      const [rows] = await pool.execute(
+        `SELECT a.id, a.client_email, a.job_id, j.team_mode
+         FROM applications a
+         LEFT JOIN jobs j ON j.id = a.job_id
+         WHERE a.id = ? LIMIT 1`,
+        [appId]
+      );
       if (!rows.length) return null;
       if (rows[0].client_email !== actorEmail) {
         return { type: "forbidden" };
+      }
+
+      if (status === "Accepted") {
+        const limit = rows[0].team_mode === "multiple" ? 5 : 1;
+        const [acceptedRows] = await pool.execute(
+          "SELECT COUNT(*) AS count FROM applications WHERE job_id = ? AND status = 'Accepted' AND id <> ?",
+          [rows[0].job_id, appId]
+        );
+        if (Number(acceptedRows[0].count || 0) >= limit) {
+          return { type: "limit_reached", limit };
+        }
       }
 
       await pool.execute("UPDATE applications SET status = ? WHERE id = ?", [status, appId]);
@@ -1130,17 +1227,25 @@ async function createMySqlStore() {
 
     async listMessages(email) {
       const [rows] = await pool.execute(
-        `SELECT * FROM messages
-         WHERE sender_email = ? OR recipient_email = ?
+        `SELECT DISTINCT m.*
+         FROM messages m
+         LEFT JOIN applications mine
+           ON mine.job_id = m.job_id
+          AND mine.status = 'Accepted'
+          AND (mine.client_email = ? OR mine.freelancer_email = ?)
+         LEFT JOIN jobs j
+           ON j.id = mine.job_id
+          AND j.team_mode = 'multiple'
+         WHERE m.sender_email = ? OR m.recipient_email = ? OR j.id IS NOT NULL
          ORDER BY created_at DESC`,
-        [email, email]
+        [email, email, email, email]
       );
       return rows.map(mapMessage);
     },
 
     async getMessageFile(messageId, email) {
       const [rows] = await pool.execute(
-        `SELECT id, sender_email, recipient_email, file_name, file_type, file_data
+        `SELECT id, sender_email, recipient_email, job_id, file_name, file_type, file_data
          FROM messages
          WHERE id = ? LIMIT 1`,
         [messageId]
@@ -1148,7 +1253,20 @@ async function createMySqlStore() {
       if (!rows.length) return null;
 
       const message = rows[0];
-      if (message.sender_email !== email && message.recipient_email !== email) {
+      let groupMember = false;
+      if (message.job_id) {
+        const [memberRows] = await pool.execute(
+          `SELECT a.id
+           FROM applications a
+           INNER JOIN jobs j ON j.id = a.job_id AND j.team_mode = 'multiple'
+           WHERE a.job_id = ? AND a.status = 'Accepted'
+             AND (a.client_email = ? OR a.freelancer_email = ?)
+           LIMIT 1`,
+          [message.job_id, email, email]
+        );
+        groupMember = Boolean(memberRows.length);
+      }
+      if (message.sender_email !== email && message.recipient_email !== email && !groupMember) {
         return { type: "forbidden" };
       }
       if (!message.file_data) return { type: "missing_file" };
@@ -1172,20 +1290,31 @@ async function createMySqlStore() {
         return { type: "missing_application" };
       }
 
-      let acceptedSql = `
-        SELECT * FROM applications
-        WHERE status = 'Accepted'
-          AND ((client_email = ? AND freelancer_email = ?) OR (client_email = ? AND freelancer_email = ?))
-          AND id = ?`;
-      const acceptedParams = [senderEmail, recipientEmail, recipientEmail, senderEmail, applicationId];
-      acceptedSql += " LIMIT 1";
-
-      const [acceptedRows] = await pool.execute(acceptedSql, acceptedParams);
+      const [acceptedRows] = await pool.execute(
+        `SELECT a.*, j.team_mode
+         FROM applications a
+         LEFT JOIN jobs j ON j.id = a.job_id
+         WHERE a.status = 'Accepted' AND a.id = ?
+         LIMIT 1`,
+        [applicationId]
+      );
       if (!acceptedRows.length) {
         return { type: "locked" };
       }
 
       const acceptedApp = acceptedRows[0];
+      let allowedParticipants = [acceptedApp.client_email, acceptedApp.freelancer_email];
+      if (acceptedApp.team_mode === "multiple") {
+        const [teamRows] = await pool.execute(
+          "SELECT freelancer_email FROM applications WHERE job_id = ? AND status = 'Accepted'",
+          [acceptedApp.job_id]
+        );
+        allowedParticipants = [acceptedApp.client_email].concat(teamRows.map((row) => row.freelancer_email));
+      }
+      if (!allowedParticipants.includes(senderEmail) || !allowedParticipants.includes(recipientEmail)) {
+        return { type: "locked" };
+      }
+
       const messageId = makeId("m");
       await pool.execute(
         `INSERT INTO messages
@@ -1398,12 +1527,13 @@ async function start() {
         const category = String(body.category || "").trim();
         const budget = Number(body.budget || 0);
         const deadlineDays = Number(body.deadlineDays || 0);
+        const teamMode = String(body.teamMode || "single").trim().toLowerCase() === "multiple" ? "multiple" : "single";
 
         if (!title || !description || !category || !budget || !deadlineDays) {
           return badRequest(res, "title, description, category, budget and deadlineDays are required");
         }
 
-        const job = await store.createJob({ ownerEmail, title, description, category, budget, deadlineDays });
+        const job = await store.createJob({ ownerEmail, title, description, category, budget, deadlineDays, teamMode });
         if (!job) {
           return json(res, 404, { ok: false, message: "owner not found" });
         }
@@ -1470,6 +1600,9 @@ async function start() {
         const application = await store.updateApplicationStatus(appId, status, currentUser.email);
         if (application && application.type === "forbidden") {
           return forbidden(res, "only the job owner can update this application");
+        }
+        if (application && application.type === "limit_reached") {
+          return badRequest(res, `this job can accept maximum ${application.limit} freelancer${application.limit > 1 ? "s" : ""}`);
         }
         if (!application) {
           return json(res, 404, { ok: false, message: "application not found" });

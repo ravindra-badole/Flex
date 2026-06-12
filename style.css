@@ -128,7 +128,7 @@ h3,
 
 .btn-primary {
   background: linear-gradient(140deg, var(--accent) 0%, var(--accent-2) 100%);
-  color: #04202f;
+  color: #000000;
   border: none;
 }
 

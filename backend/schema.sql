@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   category VARCHAR(150) NOT NULL,
   budget DECIMAL(12,2) NOT NULL,
   deadline_days INT NOT NULL,
+  team_mode VARCHAR(20) NOT NULL DEFAULT 'single',
   status VARCHAR(40) NOT NULL DEFAULT 'Open',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_jobs_owner_email (owner_email),

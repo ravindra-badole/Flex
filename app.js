@@ -7,6 +7,7 @@
   const SESSION_KEY = "sb_session";
   const THEME_KEY = "sb_theme";
   const MESSAGE_READ_KEY_PREFIX = "sb_message_read:";
+  const TEAM_WORKSPACE_KEY_PREFIX = "sb_team_workspace:";
   const REQUEST_TIMEOUT_MS = 60000;
 
   const path = (window.location.pathname.split("/").pop() || "index.html").toLowerCase();
@@ -244,6 +245,103 @@
       }
     });
     return unreadByThread;
+  }
+
+  function getWorkspaceKey(applicationId) {
+    return TEAM_WORKSPACE_KEY_PREFIX + applicationId;
+  }
+
+  function getJobTeamMode(job) {
+    return job && job.teamMode === "multiple" ? "multiple" : "single";
+  }
+
+  function isMultiJob(job) {
+    return getJobTeamMode(job) === "multiple";
+  }
+
+  function getAcceptedForJob(orders, jobId) {
+    const seen = new Set();
+    return ((orders.teamApplications || []).concat(orders.incomingApplications || [], orders.myApplications || [])).filter(function (item) {
+      if (!item || item.status !== "Accepted" || item.jobId !== jobId || seen.has(item.id)) return false;
+      seen.add(item.id);
+      return true;
+    });
+  }
+
+  function getApplicationDisplayName(item, type) {
+    if (!item) return "";
+    if (type === "client") return item.clientName || item.clientEmail || "";
+    return item.freelancerName || item.freelancerEmail || "";
+  }
+
+  function getDisplayNameByEmail(orders, email) {
+    const normalized = normalizeUserEmail(email);
+    const items = (orders.teamApplications || []).concat(orders.incomingApplications || [], orders.myApplications || []);
+    for (let i = 0; i < items.length; i += 1) {
+      const item = items[i];
+      if (normalizeUserEmail(item.clientEmail) === normalized) return getApplicationDisplayName(item, "client");
+      if (normalizeUserEmail(item.freelancerEmail) === normalized) return getApplicationDisplayName(item, "freelancer");
+    }
+    return email || "";
+  }
+
+  function getWorkspaceThreadId(application) {
+    return isMultiJob(application && application.job) ? application.jobId : application.id;
+  }
+
+  function getWorkspaceUrl(application) {
+    return "team-workspace.html?" + (isMultiJob(application && application.job)
+      ? "jobId=" + encodeURIComponent(application.jobId)
+      : "applicationId=" + encodeURIComponent(application.id));
+  }
+
+  function getMessagesUrl(application) {
+    return "messages.html?" + (isMultiJob(application && application.job)
+      ? "jobId=" + encodeURIComponent(application.jobId)
+      : "applicationId=" + encodeURIComponent(application.id));
+  }
+
+  function getTeamWorkspace(application) {
+    const key = getWorkspaceKey(getWorkspaceThreadId(application));
+    let workspace = null;
+    try {
+      workspace = JSON.parse(localStorage.getItem(key) || "null");
+    } catch (_) {
+      workspace = null;
+    }
+
+    if (!workspace || !Array.isArray(workspace.members) || !Array.isArray(workspace.tasks)) {
+      workspace = {
+        applicationId: application.id,
+        threadId: getWorkspaceThreadId(application),
+        jobId: application.jobId,
+        createdAt: new Date().toISOString(),
+        submittedAt: "",
+        members: [],
+        tasks: []
+      };
+    }
+
+    workspace.leader = {
+      name: "Senior Developer / Team Leader",
+      email: application.freelancerEmail,
+      role: "Project Lead"
+    };
+    workspace.projectTitle = application.job ? application.job.title : "Accepted Project";
+    workspace.clientEmail = application.clientEmail;
+    return workspace;
+  }
+
+  function saveTeamWorkspace(workspace) {
+    localStorage.setItem(getWorkspaceKey(workspace.threadId || workspace.applicationId), JSON.stringify({
+      applicationId: workspace.applicationId,
+      threadId: workspace.threadId || workspace.applicationId,
+      jobId: workspace.jobId,
+      createdAt: workspace.createdAt,
+      submittedAt: workspace.submittedAt || "",
+      members: workspace.members || [],
+      tasks: workspace.tasks || []
+    }));
   }
 
   function countUnreadMessages(unreadByThread) {
@@ -848,6 +946,7 @@
       const budget = Number(data.get("budget") || 0);
       const category = String(data.get("category") || "").trim();
       const deadlineDays = Number(data.get("deadline_days") || 0);
+      const teamMode = String(data.get("team_mode") || "single").trim() === "multiple" ? "multiple" : "single";
 
       if (!title || !description || !budget || !category || !deadlineDays) {
         showFormMessage(form, "Please fill all fields correctly.", true);
@@ -863,7 +962,8 @@
             description: description,
             category: category,
             budget: budget,
-            deadlineDays: deadlineDays
+            deadlineDays: deadlineDays,
+            teamMode: teamMode
           }
         });
         showFormMessage(form, "Job posted successfully.", false);
@@ -914,15 +1014,17 @@
         const ownJob = job.ownerEmail === u.email;
         const buttonText = ownJob ? "Your Job" : (alreadyApplied ? "Applied" : "Apply");
         const disabled = ownJob || alreadyApplied ? "disabled" : "";
+        const modeLabel = isMultiJob(job) ? "Multiple freelancers - max 5" : "Single freelancer";
 
         return "<div class=\"gig-card\">" +
-          "<div class=\"card-badge\">Open Project</div>" +
+          "<div class=\"card-badge\">" + modeLabel + "</div>" +
           "<h3>" + escapeHtml(job.title) + "</h3>" +
           "<p>" + escapeHtml(job.description) + "</p>" +
           "<div class=\"card-meta\">" +
             "<span><strong>Category:</strong> " + escapeHtml(job.category) + "</span>" +
             "<span><strong>Budget:</strong> Rs " + Number(job.budget).toLocaleString("en-IN") + "</span>" +
             "<span><strong>Deadline:</strong> " + job.deadlineDays + " days</span>" +
+            "<span><strong>Need:</strong> " + escapeHtml(modeLabel) + "</span>" +
           "</div>" +
           "<div class=\"actions\" style=\"margin-top: 12px;\">" +
             "<a class=\"secondary-btn action-link\" href=\"job-details.html?jobId=" + encodeURIComponent(job.id) + "\">View Details</a>" +
@@ -974,16 +1076,24 @@
       } else {
         incoming.forEach(function (item) {
           if (!item.job) return;
+          const acceptedForJob = getAcceptedForJob(orders, item.jobId);
+          const maxFreelancers = isMultiJob(item.job) ? 5 : 1;
+          const limitReached = acceptedForJob.length >= maxFreelancers && item.status !== "Accepted";
+          const modeLabel = isMultiJob(item.job) ? "Multiple Freelancer Job" : "Single Freelancer Job";
           cards.push(
             "<div>" +
-              "<div class=\"card-badge\">Client View</div>" +
+              "<div class=\"card-badge\">" + modeLabel + "</div>" +
               "<strong>" + escapeHtml(item.job.title) + "</strong>" +
               "<p>Freelancer: " + escapeHtml(item.freelancerEmail) + "</p>" +
               "<p>Status: " + escapeHtml(item.status) + "</p>" +
+              "<p>Accepted: " + acceptedForJob.length + "/" + maxFreelancers + "</p>" +
               "<div class=\"actions\" style=\"margin-top: 8px;\">" +
                 (item.status === "Accepted"
-                  ? "<a class=\"secondary-btn action-link\" href=\"messages.html?applicationId=" + encodeURIComponent(item.id) + "\">Chat</a>"
-                  : "<button type=\"button\" data-app-action=\"Accepted\" data-app-id=\"" + item.id + "\">Accept</button>" +
+                  ? "<a class=\"secondary-btn action-link\" href=\"" + getMessagesUrl(item) + "\">" + (isMultiJob(item.job) ? "Group Chat" : "Chat") + "</a>" +
+                    "<a class=\"secondary-btn action-link\" href=\"" + getWorkspaceUrl(item) + "\">Team Workspace</a>"
+                  : (limitReached
+                    ? "<button type=\"button\" disabled>Limit Reached</button>"
+                    : "<button type=\"button\" data-app-action=\"Accepted\" data-app-id=\"" + item.id + "\">Accept</button>") +
                     "<button type=\"button\" class=\"secondary-btn\" data-app-action=\"Rejected\" data-app-id=\"" + item.id + "\">Reject</button>") +
               "</div>" +
             "</div>"
@@ -996,14 +1106,18 @@
       } else {
         myApps.forEach(function (item) {
           if (!item.job) return;
+          const modeLabel = isMultiJob(item.job) ? "Multiple Freelancer Job" : "Single Freelancer Job";
           cards.push(
             "<div>" +
-              "<div class=\"card-badge\">Freelancer View</div>" +
+              "<div class=\"card-badge\">" + modeLabel + "</div>" +
               "<strong>Applied: " + escapeHtml(item.job.title) + "</strong>" +
               "<p>Client: " + escapeHtml(item.clientEmail) + "</p>" +
               "<p>Status: " + escapeHtml(item.status) + "</p>" +
               (item.status === "Accepted"
-                ? "<div class=\"actions\" style=\"margin-top: 8px;\"><a class=\"secondary-btn action-link\" href=\"messages.html?applicationId=" + encodeURIComponent(item.id) + "\">Chat with Client</a></div>"
+                ? "<div class=\"actions\" style=\"margin-top: 8px;\">" +
+                    "<a class=\"secondary-btn action-link\" href=\"" + getMessagesUrl(item) + "\">" + (isMultiJob(item.job) ? "Group Chat" : "Chat with Client") + "</a>" +
+                    "<a class=\"secondary-btn action-link\" href=\"" + getWorkspaceUrl(item) + "\">Team Workspace</a>" +
+                  "</div>"
                 : "") +
             "</div>"
           );
@@ -1241,17 +1355,57 @@
       incoming.concat(myApps).forEach(function (item) {
         if (!item.job || item.status !== "Accepted") return;
         const clientSide = item.clientEmail === u.email;
-        chats.push({
-          id: item.id,
-          jobId: item.jobId,
-          title: item.job.title,
-          counterpart: clientSide ? item.freelancerEmail : item.clientEmail,
-          label: clientSide ? "Freelancer chat" : "Client chat",
-          acceptedAt: item.appliedAt
-        });
+        if (isMultiJob(item.job)) {
+          const existing = chats.find(function (chat) { return chat.id === item.jobId; });
+          const acceptedForJob = getAcceptedForJob(orders, item.jobId);
+          const participants = [item.clientEmail].concat(acceptedForJob.map(function (app) {
+            return app.freelancerEmail;
+          })).filter(function (email, index, list) {
+            return email && list.indexOf(email) === index;
+          });
+          if (existing) {
+            existing.participants = participants;
+            existing.recipients = participants.filter(function (email) {
+              return normalizeUserEmail(email) !== normalizeUserEmail(u.email);
+            });
+            existing.counterpart = existing.recipients.map(function (email) {
+              return getDisplayNameByEmail(orders, email);
+            }).join(", ");
+            return;
+          }
+          const recipients = participants.filter(function (email) {
+            return normalizeUserEmail(email) !== normalizeUserEmail(u.email);
+          });
+          chats.push({
+            id: item.jobId,
+            applicationId: item.id,
+            jobId: item.jobId,
+            title: item.job.title,
+            counterpart: recipients.map(function (email) {
+              return getDisplayNameByEmail(orders, email);
+            }).join(", "),
+            recipients: recipients,
+            label: "Group project chat",
+            acceptedAt: item.appliedAt,
+            group: true
+          });
+        } else {
+          chats.push({
+            id: item.id,
+            applicationId: item.id,
+            jobId: item.jobId,
+            title: item.job.title,
+            counterpart: clientSide ? getApplicationDisplayName(item, "freelancer") : getApplicationDisplayName(item, "client"),
+            recipients: [clientSide ? item.freelancerEmail : item.clientEmail],
+            label: clientSide ? "Freelancer chat" : "Client chat",
+            acceptedAt: item.appliedAt,
+            group: false
+          });
+        }
       });
 
       const requestedApplicationId = query.get("applicationId");
+      const requestedJobId = query.get("jobId");
 
       if (!chats.length) {
         container.innerHTML = "<div class=\"message-item\"><h4>Chat locked</h4><p>Project chat unlocks after a client accepts a freelancer application.</p><span>Accept an application first, then both sides can talk here.</span></div>";
@@ -1261,8 +1415,19 @@
       } else {
         container.innerHTML = chats.map(function (chat) {
           const unreadCount = Number(unreadByThread[chat.id] || 0);
+          const seenMessages = new Set();
           const chatMessages = messages.filter(function (message) {
-            return message.applicationId === chat.id;
+            const belongs = chat.group ? message.jobId === chat.jobId : message.applicationId === chat.id;
+            if (!belongs) return false;
+            const dedupeKey = [
+              message.senderEmail,
+              message.body || "",
+              message.createdAt || "",
+              message.attachment && message.attachment.fileName || ""
+            ].join("|");
+            if (seenMessages.has(dedupeKey)) return false;
+            seenMessages.add(dedupeKey);
+            return true;
           }).sort(function (a, b) {
             return new Date(a.createdAt) - new Date(b.createdAt);
           });
@@ -1277,7 +1442,7 @@
                     "</button>"
                   : "";
                 return "<div class=\"chat-bubble " + (mine ? "mine" : "theirs") + "\">" +
-                  "<strong>" + (mine ? "You" : escapeHtml(chat.counterpart)) + "</strong>" +
+                  "<strong>" + (mine ? "You" : escapeHtml(getDisplayNameByEmail(orders, message.senderEmail))) + "</strong>" +
                   (message.body ? "<p>" + escapeHtml(message.body) + "</p>" : "") +
                   attachmentHtml +
                   "<span>" + formatRelativeDate(message.createdAt) + "</span>" +
@@ -1291,7 +1456,7 @@
               ? "<div class=\"thread-unread\">" + unreadCount + " unread</div>"
               : "") +
             "<h4>" + escapeHtml(chat.title) + "</h4>" +
-            "<p>Chat with " + escapeHtml(chat.counterpart) + "</p>" +
+            "<p>" + (chat.group ? "Group: " : "Chat with ") + escapeHtml(chat.counterpart || "project team") + "</p>" +
             "<p class=\"muted-line\">Thread ID: " + escapeHtml(chat.id) + "</p>" +
             "<div class=\"chat-thread\">" + messageHtml + "</div>" +
           "</div>";
@@ -1325,11 +1490,13 @@
         chatSelect.disabled = false;
         chatSelect.innerHTML = chats.map(function (chat) {
           return "<option value=\"" + escapeHtml(chat.id) + "\">" +
-            escapeHtml(chat.title + " - " + chat.counterpart) +
+            escapeHtml(chat.title + " - " + (chat.group ? "Group chat" : chat.counterpart)) +
           "</option>";
         }).join("");
         if (requestedApplicationId && chats.some(function (chat) { return chat.id === requestedApplicationId; })) {
           chatSelect.value = requestedApplicationId;
+        } else if (requestedJobId && chats.some(function (chat) { return chat.id === requestedJobId; })) {
+          chatSelect.value = requestedJobId;
         }
       }
 
@@ -1353,16 +1520,18 @@
           setFormLoading(composer, true, "Sending...");
           try {
             const attachment = await makeAttachment(file);
-            await api("/messages", {
-              method: "POST",
-              body: {
-                recipientEmail: chat.counterpart,
-                applicationId: chat.id,
-                subject: chat.title,
-                body: message,
-                attachment: attachment
-              }
-            });
+            await Promise.all((chat.recipients || [chat.counterpart]).map(function (recipientEmail) {
+              return api("/messages", {
+                method: "POST",
+                body: {
+                  recipientEmail: recipientEmail,
+                  applicationId: chat.applicationId || chat.id,
+                  subject: chat.title,
+                  body: message,
+                  attachment: attachment
+                }
+              });
+            }));
             showFormMessage(composer, attachment ? "File sent successfully." : "Message sent successfully.", false);
             composer.reset();
             renderMessagesPage(u);
@@ -1375,6 +1544,253 @@
       }
     } catch (err) {
       container.innerHTML = "<div class=\"message-item\"><h4>Unable to load messages</h4><p>" + escapeHtml(err.message) + "</p></div>";
+    }
+  }
+
+  async function renderTeamWorkspacePage(user) {
+    if (path !== "team-workspace.html") return;
+    const u = user || (await getCurrentUser());
+    const root = document.getElementById("teamWorkspaceRoot");
+    if (!u || !root) return;
+
+    function findAcceptedApplication(orders, applicationId) {
+      const items = (orders.incomingApplications || []).concat(orders.myApplications || []);
+      return items.find(function (item) {
+        return item.id === applicationId && item.status === "Accepted";
+      });
+    }
+
+    function findAcceptedApplicationByJob(orders, jobId) {
+      const items = (orders.incomingApplications || []).concat(orders.myApplications || []);
+      return items.find(function (item) {
+        return item.jobId === jobId && item.job && item.status === "Accepted";
+      });
+    }
+
+    function renderProjectPicker(orders) {
+      const accepted = (orders.incomingApplications || []).concat(orders.myApplications || []).filter(function (item) {
+        return item.job && item.status === "Accepted";
+      });
+
+      if (!accepted.length) {
+        root.innerHTML =
+          "<div class=\"profile-card\">" +
+            "<h2>Workspace Locked</h2>" +
+            "<p>Team workspace client ke accept karne ke baad open hota hai. Pehle project application accepted honi chahiye.</p>" +
+            "<div class=\"actions\"><a class=\"secondary-btn action-link\" href=\"orders.html\">Open Orders</a></div>" +
+          "</div>";
+        return;
+      }
+
+      root.innerHTML =
+        "<div class=\"profile-card\">" +
+          "<h2>Select Accepted Project</h2>" +
+          "<p>Jis accepted project ke liye senior developer group banana chahta hai, us workspace ko open karein.</p>" +
+          "<div class=\"activity-list activity-list-columns\">" +
+            accepted.map(function (item) {
+              return "<a class=\"activity-card link-card\" href=\"" + getWorkspaceUrl(item) + "\">" +
+                "<span class=\"eyebrow\">" + (isMultiJob(item.job) ? "Group Project" : "Accepted Project") + "</span>" +
+                "<strong>" + escapeHtml(item.job.title) + "</strong>" +
+                "<p>Client: " + escapeHtml(item.clientEmail) + "</p>" +
+                "<p>Leader: " + escapeHtml(item.freelancerEmail) + "</p>" +
+              "</a>";
+            }).join("") +
+          "</div>" +
+        "</div>";
+    }
+
+    function renderWorkspace(application, orders) {
+      const workspace = getTeamWorkspace(application);
+      const multiProject = isMultiJob(application.job);
+      const acceptedForJob = getAcceptedForJob(orders || {}, application.jobId);
+      const isLeader = normalizeUserEmail(u.email) === normalizeUserEmail(application.freelancerEmail);
+      const memberSlots = 5;
+      const teamMembers = multiProject
+        ? acceptedForJob.map(function (item) {
+            return {
+              name: getApplicationDisplayName(item, "freelancer"),
+              email: item.freelancerEmail,
+              type: "Freelancer",
+              role: "Accepted Freelancer"
+            };
+          })
+        : workspace.members;
+      const memberCount = teamMembers.length;
+      const taskDoneCount = workspace.tasks.filter(function (task) { return task.status === "Done"; }).length;
+      const memberOptions = [workspace.leader].concat(teamMembers).map(function (member) {
+        return "<option value=\"" + escapeHtml(member.email || member.name) + "\">" + escapeHtml((member.name || member.email) + " - " + member.role) + "</option>";
+      }).join("");
+
+      const memberCards = teamMembers.length
+        ? teamMembers.map(function (member, index) {
+            return "<div class=\"team-member-card\">" +
+              "<div>" +
+                "<strong>" + escapeHtml(member.name) + "</strong>" +
+                "<p>" + escapeHtml(member.role) + " • " + escapeHtml(member.type) + "</p>" +
+                "<p class=\"muted-line\">" + escapeHtml(member.email) + "</p>" +
+              "</div>" +
+              (isLeader && !multiProject ? "<button type=\"button\" class=\"secondary-btn\" data-remove-member=\"" + index + "\">Remove</button>" : "") +
+            "</div>";
+          }).join("")
+        : "<div class=\"team-member-card\"><p>No freelancers accepted yet.</p></div>";
+
+      const taskCards = workspace.tasks.length
+        ? workspace.tasks.map(function (task, index) {
+            return "<div class=\"workspace-task-card\">" +
+              "<div>" +
+                "<strong>" + escapeHtml(task.title) + "</strong>" +
+                "<p>Assigned to: " + escapeHtml(task.assignee) + "</p>" +
+                "<span class=\"task-status\">" + escapeHtml(task.status) + "</span>" +
+              "</div>" +
+              (isLeader ? "<button type=\"button\" class=\"secondary-btn\" data-toggle-task=\"" + index + "\">" + (task.status === "Done" ? "Reopen" : "Mark Done") + "</button>" : "") +
+            "</div>";
+          }).join("")
+        : "<div class=\"workspace-task-card\"><p>No tasks assigned yet.</p></div>";
+
+      root.innerHTML =
+        "<section class=\"profile-card workspace-hero\">" +
+          "<div>" +
+            "<p class=\"eyebrow\">Accepted Project Workspace</p>" +
+            "<h2>" + escapeHtml(workspace.projectTitle) + "</h2>" +
+            "<p>Client project accept hone ke baad senior developer yahan apna dedicated group bana kar kaam manage karega.</p>" +
+          "</div>" +
+          "<div class=\"workspace-status-panel\">" +
+            "<strong>" + (workspace.submittedAt ? "Submitted to Client" : "Work in Progress") + "</strong>" +
+            "<p>" + memberCount + "/" + memberSlots + " group members</p>" +
+            "<p>" + taskDoneCount + "/" + workspace.tasks.length + " tasks done</p>" +
+          "</div>" +
+        "</section>" +
+
+        "<section class=\"workspace-grid\">" +
+          "<div class=\"profile-card\">" +
+            "<h2>Team Leader</h2>" +
+            "<div class=\"team-member-card leader-card\">" +
+              "<div><strong>" + escapeHtml(workspace.leader.name) + "</strong><p>" + escapeHtml(workspace.leader.role) + "</p><p class=\"muted-line\">" + escapeHtml(workspace.leader.email) + "</p></div>" +
+            "</div>" +
+            "<h2 style=\"margin-top: 22px;\">Freelancer Group</h2>" +
+            "<p>" + (multiProject ? "Client accepted freelancers yahan group me automatically dikhte hain." : "Maximum 5 members add ho sakte hain.") + "</p>" +
+            "<div class=\"team-member-list\">" + memberCards + "</div>" +
+            (isLeader && !multiProject
+              ? "<form id=\"workspaceMemberForm\" class=\"inline-form workspace-form\" style=\"margin-top: 18px;\">" +
+                  "<div class=\"workspace-form-grid\">" +
+                    "<input name=\"name\" placeholder=\"Member name\" required>" +
+                    "<input name=\"email\" type=\"email\" placeholder=\"Member email\" required>" +
+                    "<select name=\"type\" aria-label=\"Member type\"><option>Student</option><option>Freelancer</option><option>Developer</option></select>" +
+                    "<input name=\"role\" placeholder=\"Role, e.g. Frontend Work\" required>" +
+                  "</div>" +
+                  "<div class=\"actions\"><button type=\"submit\"" + (memberCount >= memberSlots ? " disabled" : "") + ">Add Member</button></div>" +
+                "</form>"
+              : "<p class=\"muted-line\">" + (multiProject ? "Multiple job group client ke accepted freelancers se banta hai." : "Only senior developer/team leader can manage members.") + "</p>") +
+          "</div>" +
+
+          "<div class=\"profile-card\">" +
+            "<h2>Project Tasks</h2>" +
+            "<p>Frontend, backend, testing ya kisi bhi work item ko assign karein.</p>" +
+            "<div class=\"workspace-task-list\">" + taskCards + "</div>" +
+            (isLeader
+              ? "<form id=\"workspaceTaskForm\" class=\"inline-form workspace-form\" style=\"margin-top: 18px;\">" +
+                  "<input name=\"title\" placeholder=\"Task title\" required>" +
+                  "<select name=\"assignee\" aria-label=\"Assign task\">" + memberOptions + "</select>" +
+                  "<div class=\"actions\"><button type=\"submit\">Add Task</button></div>" +
+                "</form>" +
+                "<div class=\"actions\"><button type=\"button\" id=\"submitProjectButton\">" + (workspace.submittedAt ? "Project Submitted" : "Submit Project to Client") + "</button><a class=\"secondary-btn action-link\" href=\"" + getMessagesUrl(application) + "\">" + (multiProject ? "Open Group Chat" : "Open Client Chat") + "</a></div>"
+              : "<div class=\"actions\"><a class=\"secondary-btn action-link\" href=\"" + getMessagesUrl(application) + "\">" + (multiProject ? "Open Group Chat" : "Open Client Chat") + "</a></div>") +
+          "</div>" +
+        "</section>";
+
+      const memberForm = document.getElementById("workspaceMemberForm");
+      if (memberForm) {
+        memberForm.addEventListener("submit", function (event) {
+          event.preventDefault();
+          if (workspace.members.length >= memberSlots) {
+            showFormMessage(memberForm, "Maximum 5 members allowed in this group.", true);
+            return;
+          }
+          const data = new FormData(memberForm);
+          const email = String(data.get("email") || "").trim();
+          if (workspace.members.some(function (member) { return normalizeUserEmail(member.email) === normalizeUserEmail(email); })) {
+            showFormMessage(memberForm, "This member is already added.", true);
+            return;
+          }
+          workspace.members.push({
+            name: String(data.get("name") || "").trim(),
+            email: email,
+            type: String(data.get("type") || "Freelancer").trim(),
+            role: String(data.get("role") || "").trim()
+          });
+          saveTeamWorkspace(workspace);
+          renderWorkspace(application, orders);
+        });
+      }
+
+      const taskForm = document.getElementById("workspaceTaskForm");
+      if (taskForm) {
+        taskForm.addEventListener("submit", function (event) {
+          event.preventDefault();
+          const data = new FormData(taskForm);
+          workspace.tasks.push({
+            title: String(data.get("title") || "").trim(),
+            assignee: String(data.get("assignee") || workspace.leader.email).trim(),
+            status: "In Progress",
+            createdAt: new Date().toISOString()
+          });
+          saveTeamWorkspace(workspace);
+          renderWorkspace(application, orders);
+        });
+      }
+
+      root.querySelectorAll("[data-remove-member]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          const index = Number(btn.getAttribute("data-remove-member"));
+          workspace.members.splice(index, 1);
+          saveTeamWorkspace(workspace);
+          renderWorkspace(application, orders);
+        });
+      });
+
+      root.querySelectorAll("[data-toggle-task]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          const index = Number(btn.getAttribute("data-toggle-task"));
+          workspace.tasks[index].status = workspace.tasks[index].status === "Done" ? "In Progress" : "Done";
+          saveTeamWorkspace(workspace);
+          renderWorkspace(application, orders);
+        });
+      });
+
+      const submitButton = document.getElementById("submitProjectButton");
+      if (submitButton && !workspace.submittedAt) {
+        submitButton.addEventListener("click", function () {
+          workspace.submittedAt = new Date().toISOString();
+          saveTeamWorkspace(workspace);
+          renderWorkspace(application, orders);
+        });
+      }
+    }
+
+    try {
+      const res = await api("/orders");
+      const orders = res.orders || {};
+      const applicationId = query.get("applicationId");
+      const jobId = query.get("jobId");
+      if (!applicationId && !jobId) {
+        renderProjectPicker(orders);
+        return;
+      }
+      const application = jobId
+        ? findAcceptedApplicationByJob(orders, jobId)
+        : findAcceptedApplication(orders, applicationId);
+      if (!application) {
+        root.innerHTML =
+          "<div class=\"profile-card\">" +
+            "<h2>Workspace Locked</h2>" +
+            "<p>Ye workspace sirf accepted client project ke liye open hota hai.</p>" +
+            "<div class=\"actions\"><a class=\"secondary-btn action-link\" href=\"orders.html\">Back to Orders</a></div>" +
+          "</div>";
+        return;
+      }
+      renderWorkspace(application, orders);
+    } catch (err) {
+      root.innerHTML = "<div class=\"profile-card\"><h2>Unable to load workspace</h2><p>" + escapeHtml(err.message) + "</p></div>";
     }
   }
 
@@ -1486,6 +1902,7 @@
         "<div class=\"detail-chip\">Budget: Rs " + Number(job.budget).toLocaleString("en-IN") + "</div>" +
         "<div class=\"detail-chip\">Category: " + escapeHtml(job.category) + "</div>" +
         "<div class=\"detail-chip\">Deadline: " + job.deadlineDays + " days</div>" +
+        "<div class=\"detail-chip\">Need: " + (isMultiJob(job) ? "Multiple freelancers (max 5)" : "Single freelancer") + "</div>" +
         "<div class=\"detail-chip\">Client: " + escapeHtml(job.ownerEmail) + "</div>";
       descriptionNode.textContent = job.description;
 

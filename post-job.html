@@ -44,6 +44,22 @@
         <input type="number" name="budget" placeholder="Budget (INR)" required>
         <input type="text" name="category" placeholder="Category (e.g. Web Design, AI, Content)" required>
         <input type="number" name="deadline_days" placeholder="Deadline (Days)" required>
+        <div class="choice-row" role="group" aria-label="Freelancer requirement">
+          <label class="choice-card">
+            <input type="radio" name="team_mode" value="single" checked>
+            <span>
+              <strong>Single Freelancer</strong>
+              <small>Client ek freelancer accept karega.</small>
+            </span>
+          </label>
+          <label class="choice-card">
+            <input type="radio" name="team_mode" value="multiple">
+            <span>
+              <strong>Multiple Freelancers</strong>
+              <small>Client max 5 freelancers accept karke group bana sakta hai.</small>
+            </span>
+          </label>
+        </div>
 
         <div class="actions" style="margin-top: 6px;">
           <button type="submit">Post Job</button>
